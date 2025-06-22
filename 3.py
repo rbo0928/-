@@ -36,7 +36,7 @@ create_zebra_crossing(start_pos=[5, 13.8, 0.0965], num_lines=9, spacing=0.3125)
 # 載入行人
 humanoidStartPos = [5, 13.3,1]
 humanoidStartOrientation = p.getQuaternionFromEuler([0, 0, np.pi/2])
-humanoid = p.loadURDF('straight_scaled_0.5x.urdf', humanoidStartPos, humanoidStartOrientation)
+humanoid = p.loadURDF('straight.urdf', humanoidStartPos, humanoidStartOrientation)
 
 # 加上支撐桿，避免倒下
 cid = p.createConstraint(
