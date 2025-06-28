@@ -16,13 +16,13 @@ import time
 # 資料路徑
 DATA_DIR = '2025_06_27/5/'
 IMG_DIR = os.path.join(DATA_DIR, 'recorded_images')
-CSV_PATH = os.path.join(DATA_DIR, 'speed.csv')
+CSV_PATH = os.path.join(DATA_DIR, 'log.csv')
 MODEL_SAVE_PATH = 'cnn_lstm_driver_model.pth'
 
 # 模型與訓練參數
 SEQUENCE_LENGTH = 5  # 使用過去5張圖片來預測當前速度
 BATCH_SIZE = 4
-EPOCHS = 10
+EPOCHS = 1
 LEARNING_RATE = 0.001
 # ResNet需要至少224x224的輸入，且建議使用其標準化的均值和標準差
 IMG_HEIGHT = 224
@@ -196,12 +196,12 @@ if __name__ == '__main__':
     # 尺寸需符合 ResNet 輸入要求，並進行標準化
     # 【重要】在轉換流程中加入裁切與資料增強步驟
     transform = transforms.Compose([
-        # 步驟 1: 裁切圖片頂部以移除文字
-        transforms.Lambda(lambda img: TF.crop(img, CROP_TOP_PIXELS, 0, ORIGINAL_HEIGHT - CROP_TOP_PIXELS, ORIGINAL_WIDTH)),
+        # # 步驟 1: 裁切圖片頂部以移除文字
+        # transforms.Lambda(lambda img: TF.crop(img, CROP_TOP_PIXELS, 0, ORIGINAL_HEIGHT - CROP_TOP_PIXELS, ORIGINAL_WIDTH)),
         
-        # 【修改點】步驟 2: 對裁切後的圖片進行資料增強
-        transforms.ColorJitter(brightness=0.3, contrast=0.3, saturation=0.2),
-        transforms.RandomAffine(degrees=10, translate=(0.05, 0.05)),
+        # # 【修改點】步驟 2: 對裁切後的圖片進行資料增強
+        # transforms.ColorJitter(brightness=0.3, contrast=0.3, saturation=0.2),
+        # transforms.RandomAffine(degrees=10, translate=(0.05, 0.05)),
         
         # 步驟 3: 調整大小以符合模型輸入
         transforms.Resize((IMG_HEIGHT, IMG_WIDTH)),
@@ -238,29 +238,29 @@ if __name__ == '__main__':
     sample_sequence_1 = []
     df = pd.read_csv(CSV_PATH)
     for i in range(SEQUENCE_LENGTH):
-        img_name = df.iloc[i]['img_name']
+        img_name = df.iloc[i]['img_path']
         img_path = os.path.join(IMG_DIR, img_name)
         sample_sequence_1.append(Image.open(img_path))
     
     predicted_speeds_1 = predict(prediction_model, sample_sequence_1, transform, device)
     true_speeds_row_1 = df.iloc[SEQUENCE_LENGTH - 1]
-    print(f"預測輸入: 影像 {df.iloc[0]['img_name']} 到 {df.iloc[SEQUENCE_LENGTH - 1]['img_name']}")
+    print(f"預測輸入: 影像 {df.iloc[0]['img_path']} 到 {df.iloc[SEQUENCE_LENGTH - 1]['img_path']}")
     print(f"預測速度: 左={predicted_speeds_1[0]:.2f}, 右={predicted_speeds_1[1]:.2f}")
     print(f"真實速度: 左={true_speeds_row_1['lwheel']:.2f}, 右={true_speeds_row_1['rwheel']:.2f}")
 
     # --- 預測範例 2: 使用資料集中間的圖片 ---
     print("\n--- 預測 2  ---")
-    start_idx_2 = int(input("start png:"))
+    start_idx_2 = int(input("start png(-1 to stop):"))
     while start_idx_2 != -1:
         sample_sequence_2 = []
         for i in range(start_idx_2, start_idx_2 + SEQUENCE_LENGTH):
-                img_name = df.iloc[i]['img_name']
+                img_name = df.iloc[i]['img_path']
                 img_path = os.path.join(IMG_DIR, img_name)
                 sample_sequence_2.append(Image.open(img_path))
 
         predicted_speeds_2 = predict(prediction_model, sample_sequence_2, transform, device)
         true_speeds_row_2 = df.iloc[start_idx_2 + SEQUENCE_LENGTH - 1]
-        print(f"預測輸入: 影像 {df.iloc[start_idx_2]['img_name']} 到 {df.iloc[start_idx_2 + SEQUENCE_LENGTH - 1]['img_name']}")
+        print(f"預測輸入: 影像 {df.iloc[start_idx_2]['img_path']} 到 {df.iloc[start_idx_2 + SEQUENCE_LENGTH - 1]['img_path']}")
         print(f"預測速度: 左={predicted_speeds_2[0]:.2f}, 右={predicted_speeds_2[1]:.2f}")
         print(f"真實速度: 左={true_speeds_row_2['lwheel']:.2f}, 右={true_speeds_row_2['rwheel']:.2f}")
         start_idx_2 = int(input("start png:"))
