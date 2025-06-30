@@ -180,8 +180,13 @@ try:
 
         rwheel_value = wheel_value * (1 - side_value * d)
         lwheel_value = wheel_value * (1 + side_value * d)
+
+        # 慣性平滑
+        actual_lwheel_value = (1 - alpha) * actual_lwheel_value + alpha * lwheel_value
+        actual_rwheel_value = (1 - alpha) * actual_rwheel_value + alpha * rwheel_value
+
         for joint in [0, 1, 2, 3]:
-            v = lwheel_value if joint % 2 == 0 else rwheel_value
+            v = actual_lwheel_value if joint % 2 == 0 else actual_rwheel_value
             p.setJointMotorControl2(r2d2, joint, p.VELOCITY_CONTROL, targetVelocity=v)
 
         # Camera
