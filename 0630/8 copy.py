@@ -13,6 +13,10 @@ import shutil
 data_log = []
 SAVE_IMG = True
 
+actual_lwheel_value = 0
+actual_rwheel_value = 0
+alpha = 0.3  # 越小回復越慢
+
 # ---------------------------
 # Lane offset (via OpenCV)
 # ---------------------------
