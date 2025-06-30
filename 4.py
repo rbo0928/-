@@ -28,8 +28,6 @@ def log_data(pic_num, img, side_value, wheel_value, lwheel_value, rwheel_value, 
         "img_path": img_name,
         "steering": side_value,
         "throttle": wheel_value,
-
-        
         "lwheel": lwheel_value,
         "rwheel": rwheel_value,
         "speed_signed": speed_signed,

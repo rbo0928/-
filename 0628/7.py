@@ -11,6 +11,10 @@ import pandas as pd
 data_log = []
 SAVE_IMG = True
 
+actual_lwheel_value = 0
+actual_rwheel_value = 0
+alpha = 0.1  # 越小回復越慢
+
 # ---------------------------
 # Lane offset (via OpenCV)
 # ---------------------------
@@ -152,6 +156,7 @@ while True:
             os.makedirs(os.path.join(folder_path, 'segmentation'))
         break
     i += 1
+
 
 # ---------------------------
 # Main loop

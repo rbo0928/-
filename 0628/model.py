@@ -14,16 +14,16 @@ import time
 
 # --- 參數設定 ---
 # 資料路徑
-DATA_DIR = '2025_06_27/5/'
+DATA_DIR = '2025_06_30/1/'
 IMG_DIR = os.path.join(DATA_DIR, 'recorded_images')
 CSV_PATH = os.path.join(DATA_DIR, 'log.csv')
 MODEL_SAVE_PATH = 'cnn_lstm_driver_model.pth'
 
 # 模型與訓練參數
-SEQUENCE_LENGTH = 5  # 使用過去5張圖片來預測當前速度
-BATCH_SIZE = 4
-EPOCHS = 1
-LEARNING_RATE = 0.001
+SEQUENCE_LENGTH = 10  # 使用過去5張圖片來預測當前速度
+BATCH_SIZE = 4 # 批次大小
+EPOCHS = 10  # 訓練的輪數
+LEARNING_RATE = 0.001 # 學習率
 # ResNet需要至少224x224的輸入，且建議使用其標準化的均值和標準差
 IMG_HEIGHT = 224
 IMG_WIDTH = 224
