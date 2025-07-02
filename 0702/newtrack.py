@@ -1,0 +1,349 @@
+import pybullet as p
+from pybullet_utils import gazebo_world_parser
+import pybullet_data
+import cv2
+import time
+import random
+import numpy as np
+import datetime, os
+import pandas as pd
+from sklearn.model_selection import train_test_split
+import shutil
+
+data_log = []
+SAVE_IMG = True
+
+actual_lwheel_value = 0
+actual_rwheel_value = 0
+alpha = 0.3  # 越小回復越慢
+
+# ---------------------------
+# Lane offset (via OpenCV)
+# ---------------------------
+def get_lane_offset_by_opencv(img, width):
+    # Step 1: 提取白色區域（避免抓到柏油）
+    hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+    white_mask = cv2.inRange(hsv, (0, 0, 200), (180, 30, 255))
+    masked = cv2.bitwise_and(img, img, mask=white_mask)
+    gray = cv2.cvtColor(masked, cv2.COLOR_BGR2GRAY)
+    
+    # Step 2: Canny 邊緣
+    blur = cv2.GaussianBlur(gray, (5, 5), 0)
+    edges = cv2.Canny(blur, 50, 150)
+
+    # Step 3: ROI 區域（畫面底部）
+    roi_margin = 150
+    roi = edges[img.shape[0] - roi_margin:, :]
+
+    # Step 4: 分左右區域
+    left_roi = roi[:, :width//2]
+    right_roi = roi[:, width//2:]
+
+    # Step 5: 各自找線段
+    left_lines = cv2.HoughLinesP(left_roi, 1, np.pi/180, threshold=30, minLineLength=30, maxLineGap=20)
+    right_lines = cv2.HoughLinesP(right_roi, 1, np.pi/180, threshold=30, minLineLength=30, maxLineGap=20)
+
+    left_xs = []
+    if left_lines is not None:
+        for line in left_lines:
+            x1, y1, x2, y2 = line[0]
+            x_mid = (x1 + x2) / 2
+            left_xs.append(x_mid)
+            cv2.line(img, (x1, y1 + img.shape[0] - roi_margin), (x2, y2 + img.shape[0] - roi_margin), (0, 255, 0), 2)
+
+    right_xs = []
+    if right_lines is not None:
+        for line in right_lines:
+            x1, y1, x2, y2 = line[0]
+            x_mid = (x1 + x2) / 2 + width//2  # 因為是右半邊，要加偏移
+            right_xs.append(x_mid)
+            cv2.line(img, (x1 + width//2, y1 + img.shape[0] - roi_margin),
+                     (x2 + width//2, y2 + img.shape[0] - roi_margin), (255, 0, 0), 2)
+
+    # Step 6: 計算車道中心
+    if left_xs and right_xs:
+        lane_center = (np.mean(left_xs) + np.mean(right_xs)) / 2
+        return lane_center - (width / 2)
+    elif left_xs:
+        return np.mean(left_xs) - (width / 2) + 100  # 偏左估中間
+    elif right_xs:
+        return np.mean(right_xs) - (width / 2) - 100  # 偏右估中間
+    else:
+        return 0.0
+
+# ---------------------------
+# Data Logging
+# ---------------------------
+def log_data(pic_num, img, side_value, wheel_value, lwheel_value, rwheel_value, speed_signed, seg_mask, width, height, lane_offset):
+    img_name = f"{pic_num:05d}.png"
+    img_path = os.path.join(folder_path, 'recorded_images', img_name)
+    cv2.imwrite(img_path, img)
+
+    entry = {
+        "img_path": img_name,
+        "steering": side_value,
+        "throttle": wheel_value,
+        "lwheel": lwheel_value,
+        "rwheel": rwheel_value,
+        "speed_signed": speed_signed,
+        "lane_offset": lane_offset,
+        "timestamp": datetime.datetime.now().isoformat()
+    }
+    data_log.append(entry)
+
+def save_csv_log():
+    df = pd.DataFrame(data_log)
+    df.to_csv(os.path.join(folder_path, "log.csv"), index=False)
+
+# ---------------------------
+# Zebra crossing builder
+# ---------------------------
+def create_zebra_crossing(start_pos=[0, 0, 0.05], num_lines=6, spacing=0.3, line_size=[2, 0.2, 0.01]):
+    for i in range(num_lines):
+        basePosition = [start_pos[0], start_pos[1] + i * spacing, start_pos[2]]
+        colBoxId = p.createCollisionShape(p.GEOM_BOX, halfExtents=[line_size[0]/2, line_size[1]/2, line_size[2]/2])
+        visBoxId = p.createVisualShape(p.GEOM_BOX, halfExtents=[line_size[0]/2, line_size[1]/2, line_size[2]/2], rgbaColor=[1,1,1,1])
+        p.createMultiBody(baseMass=0, baseCollisionShapeIndex=colBoxId, baseVisualShapeIndex=visBoxId, basePosition=basePosition)
+
+# ---------------------------
+# PyBullet Initialization
+# ---------------------------
+physicsClient = p.connect(p.GUI)
+p.setAdditionalSearchPath(pybullet_data.getDataPath())
+p.loadURDF("plane.urdf")
+gazebo_world_parser.parseWorld(p, filepath="worlds/new.world")
+p.loadURDF(r"C:/python/9999999999999999999999999/full_track.urdf", basePosition=[0,0,0.1])
+p.setGravity(0, 0, -9.8)
+p.setRealTimeSimulation(1)
+create_zebra_crossing(start_pos=[5, 13.8, 0.0965], num_lines=9, spacing=0.3125)
+
+# Humanoid
+humanoidStartPos = [5, 13.3, 1]
+humanoidStartOrientation = p.getQuaternionFromEuler([0, 0, np.pi/2])
+humanoid = p.loadURDF('straight_scaled_0.5x.urdf', humanoidStartPos, humanoidStartOrientation)
+cid = p.createConstraint(humanoid, -1, -1, -1, p.JOINT_POINT2POINT, [0, 0, 0], [0, 0, 0], [humanoidStartPos[0], humanoidStartPos[1], 0.5])
+p.changeConstraint(cid, maxForce=50)
+current_yaw = np.pi/2
+move_direction = 0
+is_forward_pressed = False
+is_backward_pressed = False
+last_pos, _ = p.getBasePositionAndOrientation(humanoid)
+
+# Vehicle
+r2d2StartPos = [0, -1.225, 2]
+r2d2StartOrientation = p.getQuaternionFromEuler([0, 0, 0])
+r2d2 = p.loadURDF('real_car.urdf', r2d2StartPos, r2d2StartOrientation)
+numJoints = p.getNumJoints(r2d2)
+
+# Controls
+d = 0.75
+forward_speed = 20
+pitch = p.addUserDebugParameter('camerapitch', 0, 360, 225)
+yaw = p.addUserDebugParameter('camerayaw', 0, 360, 90)
+distance = p.addUserDebugParameter('cameradistance', 0, 6, 2)
+
+# Camera
+width, height = 640, 480
+fov, aspect, near, far = 60, width/height, 0.1, 100
+projection_matrix = p.computeProjectionMatrixFOV(fov, aspect, near, far)
+
+# Folder setup
+now = datetime.datetime.now(tz=datetime.timezone(datetime.timedelta(hours=8)))
+day_dir = now.strftime('%Y_%m_%d')
+pic_num = 0
+if not os.path.isdir(day_dir):
+    os.mkdir(day_dir)
+i = 1
+while True:
+    folder_name = str(i)
+    folder_path = os.path.join(day_dir, folder_name)
+    if not os.path.exists(folder_path):
+        os.makedirs(folder_path)
+        os.makedirs(os.path.join(folder_path, 'recorded_images'))
+        if SAVE_IMG:
+            os.makedirs(os.path.join(folder_path, 'deep'))
+            os.makedirs(os.path.join(folder_path, 'segmentation'))
+        break
+    i += 1
+
+# ---------------------------
+# Main loop
+# ---------------------------
+recording = False
+try:
+    while True:
+        keys = p.getKeyboardEvents()
+        if ord('r') in keys and keys[ord('r')] & p.KEY_WAS_TRIGGERED:
+            recording = not recording
+            print(f"[INFO] 模仿學習資料記錄 {'啟動' if recording else '暫停'}")
+        if ord('o') in keys and keys[ord('o')] & p.KEY_WAS_TRIGGERED:
+            p.resetBasePositionAndOrientation(r2d2, [0, -1.225, 0.5], [0, 0, 0, 1])
+        if ord('p') in keys and keys[ord('p')] & p.KEY_WAS_TRIGGERED:
+            p.resetBasePositionAndOrientation(r2d2, [5, 14.4, 0.5], [0, 0, 0, 1])
+    
+        # 更新行人移動狀態
+        if ord('i') in keys:
+            if keys[ord('i')] & p.KEY_IS_DOWN:
+                is_forward_pressed = True
+            if keys[ord('i')] & p.KEY_WAS_RELEASED:
+                is_forward_pressed = False
+
+        if ord('k') in keys:
+            if keys[ord('k')] & p.KEY_IS_DOWN:
+                is_backward_pressed = True
+            if keys[ord('k')] & p.KEY_WAS_RELEASED:
+                is_backward_pressed = False
+
+        if is_forward_pressed:
+            move_direction = 1
+        elif is_backward_pressed:
+            move_direction = -1
+        else:
+            move_direction = 0
+
+        # 更新行人朝向（左右轉）
+        if ord('j') in keys and keys[ord('j')] & p.KEY_IS_DOWN:
+            current_yaw += 0.05
+        if ord('l') in keys and keys[ord('l')] & p.KEY_IS_DOWN:
+            current_yaw -= 0.05
+
+        # 行人位置更新
+        pos, _ = p.getBasePositionAndOrientation(humanoid)
+        if move_direction != 0:
+            dir_x = [np.cos(current_yaw), np.sin(current_yaw), 0]
+            move_speed = 0.04 * move_direction
+            last_pos = [pos[0] + dir_x[0]*move_speed, pos[1] + dir_x[1]*move_speed, pos[2]]
+        else:
+            last_pos = list(pos)
+
+        # 重設行人位置與方向
+        stand_orientation = p.getQuaternionFromEuler([0, 0, current_yaw])
+        p.resetBasePositionAndOrientation(humanoid, last_pos, stand_orientation)
+
+        # 維持人物站直（設定腿部關節位置）
+        for joint_index in range(4):
+            p.setJointMotorControl2(humanoid, jointIndex=joint_index, controlMode=p.POSITION_CONTROL, targetPosition=0)
+
+        # Vehicle control
+        wheel_value, side_value = 0, 0
+        if p.B3G_UP_ARROW in keys and keys[p.B3G_UP_ARROW] & p.KEY_IS_DOWN:
+            wheel_value = forward_speed
+        elif p.B3G_DOWN_ARROW in keys and keys[p.B3G_DOWN_ARROW] & p.KEY_IS_DOWN:
+            wheel_value = -forward_speed
+
+        if p.B3G_LEFT_ARROW in keys and keys[p.B3G_LEFT_ARROW] & p.KEY_IS_DOWN:
+            side_value = -1
+        elif p.B3G_RIGHT_ARROW in keys and keys[p.B3G_RIGHT_ARROW] & p.KEY_IS_DOWN:
+            side_value = 1
+
+        rwheel_value = wheel_value * (1 - side_value * d)
+        lwheel_value = wheel_value * (1 + side_value * d)
+         # 慣性平滑
+        actual_lwheel_value = (1 - alpha) * actual_lwheel_value + alpha * lwheel_value
+        actual_rwheel_value = (1 - alpha) * actual_rwheel_value + alpha * rwheel_value
+
+        for joint in [0, 1, 2, 3]:
+            v = actual_lwheel_value if joint % 2 == 0 else actual_rwheel_value
+            p.setJointMotorControl2(r2d2, joint, p.VELOCITY_CONTROL, targetVelocity=v)
+
+        # Camera
+        r2d2_pos, r2d2_orn = p.getBasePositionAndOrientation(r2d2)
+        p.resetDebugVisualizerCamera(
+            cameraDistance=p.readUserDebugParameter(distance),
+            cameraYaw=p.readUserDebugParameter(yaw),
+            cameraPitch=p.readUserDebugParameter(pitch),
+            cameraTargetPosition=r2d2_pos
+        )
+
+        camera_link_state = p.getLinkState(r2d2, numJoints - 1)
+        camera_pos = camera_link_state[0]
+        camera_orn = camera_link_state[1]
+        camera_rot = p.getMatrixFromQuaternion(camera_orn)
+        camera_forward = [camera_rot[0], camera_rot[3], camera_rot[6]]
+        camera_up = [camera_rot[2], camera_rot[5], camera_rot[8]]
+        camera_target = [camera_pos[0]+camera_forward[0], camera_pos[1]+camera_forward[1], camera_pos[2]+camera_forward[2]]
+
+        view_matrix = p.computeViewMatrix(camera_pos, camera_target, camera_up)
+        img_arr = p.getCameraImage(width, height, view_matrix, projection_matrix)
+        rgb_img = img_arr[2]
+        depth_buffer = np.reshape(img_arr[3], (height, width))
+        seg_mask = np.reshape(img_arr[4], (height, width))
+
+        img = np.reshape(np.array(rgb_img, dtype=np.uint8), (height, width, 4))
+        img = cv2.cvtColor(img, cv2.COLOR_RGBA2BGR)
+        lane_offset = get_lane_offset_by_opencv(img, width)
+
+        # Speed
+        linear_velocity, _ = p.getBaseVelocity(r2d2)
+        speed_vec = np.array(linear_velocity)
+        forward_vector = np.array([camera_forward[0], camera_forward[1], camera_forward[2]])
+        speed_signed = np.dot(speed_vec, forward_vector)
+
+        # HUD
+        hud_text = f"XYZ: ({r2d2_pos[0]:.3f}, {r2d2_pos[1]:.3f}, {r2d2_pos[2]:.3f})"
+        cv2.putText(img, hud_text, (290, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 0), 2, cv2.LINE_AA)
+        # 顯示四個輪子的角速度
+        for joint in [0, 1, 2, 3]:
+            joint_state = p.getJointState(r2d2, joint)
+            angular_velocity = joint_state[1]  # jointState[1] 是角速度
+            cv2.putText(img, f"Wheel {joint}: {angular_velocity:.2f} rad/s",
+                        (10, 20 + joint * 25),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.55, (50, 50, 255), 2)
+        cv2.putText(img, f"Car Speed: {speed_signed:.2f} m/s", (10, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 100, 200), 2)
+        cv2.putText(img, f"Lane Offset: {lane_offset:.2f}", (10, 145), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 200, 100), 2)
+        
+        if recording:
+            log_data(pic_num, img, side_value, wheel_value, lwheel_value, rwheel_value, speed_signed, seg_mask, width, height, lane_offset)
+            depth_real = (far * near) / (far - (far - near) * depth_buffer)
+            depth_mm = (depth_real * 1000).astype(np.uint16)
+            cv2.imwrite(os.path.join(folder_path, 'deep', f"{pic_num:05d}.png"), depth_mm)
+            color_mask = np.zeros((height, width, 3), dtype=np.uint8)
+            for obj_id in np.unique(seg_mask):
+                color = [random.randint(0,255) for _ in range(3)]
+                color_mask[seg_mask == obj_id] = color
+            cv2.imwrite(os.path.join(folder_path, 'segmentation', f"{pic_num:05d}.png"), color_mask)
+            pic_num += 1
+
+        cv2.imshow("Car Camera", img)
+        if cv2.waitKey(1) == 27:
+            break
+        p.stepSimulation()
+        time.sleep(0.01)
+finally:
+    if SAVE_IMG and len(data_log) > 0:
+        save_csv_log()
+        print(f"[INFO] 已儲存 {len(data_log)} 筆模仿學習資料至：{folder_path}/log.csv")
+
+        # 新增切分功能
+        def split_dataset(csv_path, img_folder, output_folder,
+                          val_ratio=0.1, test_ratio=0.1, random_state=42):
+            df = pd.read_csv(csv_path)
+            trainval_df, test_df = train_test_split(
+                df, test_size=test_ratio, random_state=random_state, shuffle=True
+            )
+            val_size = val_ratio / (1 - test_ratio)
+            train_df, val_df = train_test_split(
+                trainval_df, test_size=val_size, random_state=random_state, shuffle=True
+            )
+
+            splits = {"train": train_df, "val": val_df, "test": test_df}
+            for split_name, split_df in splits.items():
+                split_img_dir = os.path.join(output_folder, split_name, "images")
+                os.makedirs(split_img_dir, exist_ok=True)
+                for _, row in split_df.iterrows():
+                    src = os.path.join(img_folder, row["img_path"])
+                    dst = os.path.join(split_img_dir, row["img_path"])
+                    shutil.copy(src, dst)
+                split_df.to_csv(os.path.join(output_folder, split_name, "log.csv"), index=False)
+
+        # 執行切分
+        split_dataset(
+            csv_path=os.path.join(folder_path, "log.csv"),
+            img_folder=os.path.join(folder_path, "recorded_images"),
+            output_folder=folder_path,
+            val_ratio=0.1,
+            test_ratio=0.1
+        )
+        print("[INFO] 已將資料切分為 train/val/test 三組資料集")
+
+    cv2.destroyAllWindows()
