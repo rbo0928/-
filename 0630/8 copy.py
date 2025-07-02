@@ -9,6 +9,7 @@ import datetime, os
 import pandas as pd
 from sklearn.model_selection import train_test_split
 import shutil
+from sklearn.model_selection import KFold
 
 data_log = []
 SAVE_IMG = True
@@ -260,35 +261,77 @@ finally:
         print(f"[INFO] 已儲存 {len(data_log)} 筆模仿學習資料至：{folder_path}/log.csv")
 
         # 新增切分功能
-        def split_dataset(csv_path, img_folder, output_folder,
-                          val_ratio=0.1, test_ratio=0.1, random_state=42):
+        def split_kfold_dataset(csv_path, img_folder, output_folder,
+                        n_splits=8, val_ratio=0.1, test_ratio=0.1, random_state=42):
             df = pd.read_csv(csv_path)
-            trainval_df, test_df = train_test_split(
-                df, test_size=test_ratio, random_state=random_state, shuffle=True
-            )
-            val_size = val_ratio / (1 - test_ratio)
-            train_df, val_df = train_test_split(
-                trainval_df, test_size=val_size, random_state=random_state, shuffle=True
-            )
+            kf = KFold(n_splits=n_splits, shuffle=True, random_state=random_state)
+            fold = 1
+            for trainval_idx, test_idx in kf.split(df):
+                trainval_df = df.iloc[trainval_idx].reset_index(drop=True)
+                test_df = df.iloc[test_idx].reset_index(drop=True)
+                val_size = val_ratio / (1 - test_ratio)
+                train_df, val_df = train_test_split(
+                    trainval_df, test_size=val_size, random_state=random_state, shuffle=True
+                )
 
-            splits = {"train": train_df, "val": val_df, "test": test_df}
-            for split_name, split_df in splits.items():
-                split_img_dir = os.path.join(output_folder, split_name, "images")
-                os.makedirs(split_img_dir, exist_ok=True)
-                for _, row in split_df.iterrows():
-                    src = os.path.join(img_folder, row["img_path"])
-                    dst = os.path.join(split_img_dir, row["img_path"])
-                    shutil.copy(src, dst)
-                split_df.to_csv(os.path.join(output_folder, split_name, "log.csv"), index=False)
+                fold_dir = os.path.join(output_folder, f"fold_{fold}")
+                for split_name, split_df in zip(['train', 'val', 'test'], [train_df, val_df, test_df]):
+                    split_img_dir = os.path.join(fold_dir, split_name, "images")
+                    os.makedirs(split_img_dir, exist_ok=True)
+                    new_log = []
+                    for idx, row in enumerate(split_df.itertuples()):
+                        new_img_name = f"{idx:05d}.png"
+                        src = os.path.join(img_folder, getattr(row, "img_path"))
+                        dst = os.path.join(split_img_dir, new_img_name)
+                        shutil.copy(src, dst)
+                        entry = row._asdict()
+                        entry["img_path"] = new_img_name
+                        # row.Index 會被加進 _asdict，要移除
+                        if "Index" in entry:
+                            del entry["Index"]
+                        new_log.append(entry)
+                    pd.DataFrame(new_log).to_csv(os.path.join(fold_dir, split_name, "log.csv"), index=False)
+                print(f"[INFO] Fold {fold} 已切分完成")
+                fold += 1
 
         # 執行切分
-        split_dataset(
-            csv_path=os.path.join(folder_path, "log.csv"),
-            img_folder=os.path.join(folder_path, "recorded_images"),
-            output_folder=folder_path,
-            val_ratio=0.1,
-            test_ratio=0.1
+        split_kfold_dataset(
+        csv_path=os.path.join(folder_path, "log.csv"),
+        img_folder=os.path.join(folder_path, "recorded_images"),
+        output_folder=folder_path,
+        n_splits=8,
+        val_ratio=0.1,
+        test_ratio=0.1
         )
-        print("[INFO] 已將資料切分為 train/val/test 三組資料集")
+        print("[INFO] 已將資料切分為 8 fold，每 fold 含 train/val/test 三組資料集")
+
+        def merge_folds_to_one(output_folder, n_folds=8):
+            for split_name in ['train', 'val', 'test']:
+                merged_img_dir = os.path.join(output_folder, f"all_{split_name}", "images")
+                os.makedirs(merged_img_dir, exist_ok=True)
+                merged_log = []
+                img_counter = 0
+                for fold in range(1, n_folds+1):
+                    fold_dir = os.path.join(output_folder, f"fold_{fold}", split_name)
+                    log_path = os.path.join(fold_dir, "log.csv")
+                    if not os.path.exists(log_path):
+                        continue
+                    df = pd.read_csv(log_path)
+                    # 保持 log.csv 原順序
+                    for idx, row in df.iterrows():
+                        new_img_name = f"{img_counter:05d}.png"
+                        src = os.path.join(fold_dir, "images", row["img_path"])
+                        dst = os.path.join(merged_img_dir, new_img_name)
+                        shutil.copy(src, dst)
+                        entry = row.to_dict()
+                        entry["img_path"] = new_img_name
+                        merged_log.append(entry)
+                        img_counter += 1
+                pd.DataFrame(merged_log).to_csv(os.path.join(output_folder, f"all_{split_name}", "log.csv"), index=False)
+                print(f"[INFO] all_{split_name} 合併完成，共 {img_counter} 張圖片")
+
+        # 執行合併
+        merge_folds_to_one(folder_path, n_folds=8)
+        print("[INFO] 已將所有 fold 合併為 all_train、all_val、all_test")
 
     cv2.destroyAllWindows()
