@@ -247,7 +247,7 @@ if __name__ == '__main__':
         # 【修改點】在優化器中加入 weight_decay
         optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE, weight_decay=1e-4)
         # 【修改點】定義學習率排程器
-        scheduler = ReduceLROnPlateau(optimizer, 'min', factor=0.5, patience=2)
+        scheduler = ReduceLROnPlateau(optimizer, 'min', factor=0.5, patience=2, verbose=True)
 
         # 早停法變數初始化
         patience = 5 # 稍微增加早停的耐心，因為排程器會幫助模型跳出局部最優

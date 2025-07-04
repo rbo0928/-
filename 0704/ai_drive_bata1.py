@@ -22,13 +22,13 @@ from collections import deque # 用於高效地處理影像序列
 
 # --- 1. AI 模型參數 (必須與訓練時完全一致) ---
 MODEL_PATH = 'best_transformer_driver_model.pth' # 指定訓練好的模型檔案
-SEQUENCE_LENGTH = 15
+SEQUENCE_LENGTH = 20
 IMG_HEIGHT = 224
 IMG_WIDTH = 224
 D_MODEL = 512  # ResNet-18 的輸出維度
 N_HEAD = 8
 N_LAYERS = 3
-DROPOUT = 0.3
+DROPOUT = 0.4
 
 # 圖片裁切參數 (裁掉圖片頂部包含文字的部分)
 CROP_TOP_PIXELS = 280
