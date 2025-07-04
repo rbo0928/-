@@ -84,7 +84,7 @@ def log_data(pic_num, img, side_value, wheel_value, lwheel_value, rwheel_value, 
         "steering": side_value,
         "throttle": wheel_value,
         "lwheel": actual_lwheel_value ,
-        "rwheel": actual_lwheel_value,
+        "rwheel": actual_rwheel_value,
         "speed_signed": speed_signed,
         "lane_offset": lane_offset,
         "timestamp": datetime.datetime.now().isoformat()
