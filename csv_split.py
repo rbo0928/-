@@ -4,7 +4,7 @@ import numpy as np
 
 # --- 參數設定 ---
 # 原始資料路徑
-DATA_DIR = '2025_06_27/5/'
+DATA_DIR = '2025_07_14/1/'
 ORIGINAL_CSV_PATH = os.path.join(DATA_DIR, 'log.csv')
 
 # 分割比例

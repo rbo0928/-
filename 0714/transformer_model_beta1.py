@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import Dataset, DataLoader
+from torch.optim.lr_scheduler import ReduceLROnPlateau # 【修改點】匯入學習率排程器
 import torchvision.transforms as transforms
 import torchvision.models as models
 import math
@@ -17,26 +18,26 @@ import torchvision.transforms.functional as TF
 
 # --- 參數設定 ---
 # 資料路徑 (讀取分割好的檔案)
-DATA_DIR = '2025_07_09/3/'
+DATA_DIR = '2025_07_14/1/'
 IMG_DIR = os.path.join(DATA_DIR, 'recorded_images')
 TRAIN_CSV_PATH = os.path.join(DATA_DIR, 'train_data.csv')
 VAL_CSV_PATH = os.path.join(DATA_DIR, 'val_data.csv')
 TEST_CSV_PATH = os.path.join(DATA_DIR, 'test_data.csv')
-MODEL_SAVE_PATH = 'transformer_driver_model_augmented.pth'
+BEST_MODEL_SAVE_PATH = 'best_transformer_driver_model.pth'
 
 # 預覽開關
 SHOW_PREVIEW = True
 
 # 模型與訓練參數
 SEQUENCE_LENGTH = 20
-BATCH_SIZE = 8 # 增加批次大小以更好地利用GPU
-EPOCHS = 20
-LEARNING_RATE = 1e-5
+BATCH_SIZE = 8
+EPOCHS = 40 # 增加週期以給予早停法足夠的觀察空間
+LEARNING_RATE = 1e-4 # 可以適當提高初始學習率，由排程器自動調整
 IMG_HEIGHT = 224
 IMG_WIDTH = 224
 
 # 圖片裁切參數
-CROP_TOP_PIXELS = 240 # 調整為較合理的裁切值
+CROP_TOP_PIXELS = 200
 ORIGINAL_HEIGHT = 480
 ORIGINAL_WIDTH = 640
 
@@ -44,29 +45,22 @@ ORIGINAL_WIDTH = 640
 D_MODEL = 512
 N_HEAD = 8
 N_LAYERS = 3
-DROPOUT = 0.1
+DROPOUT = 0.4 # 【修改點】增加Dropout以加強正規化
 
-# --- 【修改點】新增一個可序列化的自定義裁切類別 ---
+# --- 1. 自定義資料集與轉換 ---
 class CustomTopCrop:
-    """
-    一個可序列化的類別，用於裁切圖片頂部。
-    取代了在多程序中會導致錯誤的 lambda 函式。
-    """
     def __init__(self, top_pixels):
         self.top_pixels = top_pixels
-
     def __call__(self, img):
-        # TF.crop(img, top, left, height, width)
         return TF.crop(img, self.top_pixels, 0, ORIGINAL_HEIGHT - self.top_pixels, ORIGINAL_WIDTH)
 
-# --- 1. 自定義資料集 (核心修改：加入針對性資料增強) ---
 class DrivingDataset(Dataset):
     def __init__(self, csv_file, img_dir, sequence_length, transform=None, is_training=False):
         self.annotations = pd.read_csv(csv_file)
         self.img_dir = img_dir
         self.sequence_length = sequence_length
         self.transform = transform
-        self.is_training = is_training # 標記是否為訓練集，只對訓練集做增強
+        self.is_training = is_training
 
     def __len__(self):
         return len(self.annotations) - self.sequence_length + 1
@@ -75,8 +69,6 @@ class DrivingDataset(Dataset):
         start_index = index
         end_index = index + self.sequence_length
         
-        # --- 針對性資料增強邏輯 ---
-        # 1. 先讀取目標速度，以判斷是否為直線
         target_row = self.annotations.iloc[end_index - 1]
         l_speed = target_row['lwheel']
         r_speed = target_row['rwheel']
@@ -85,36 +77,25 @@ class DrivingDataset(Dataset):
         apply_straight_aug = False
         shift_px = 0
         
-        # 只對訓練集進行增強
         if self.is_training:
-            # 判斷是否為直線行駛
-            is_straight = abs(l_speed - r_speed) < 1.5 # 放寬直線判斷標準
-            
-            # 50% 的機率對直線資料進行增強
+            is_straight = abs(l_speed - r_speed) < 1.5
             if is_straight and random.random() < 0.5:
                 apply_straight_aug = True
-                # 隨機決定平移方向和幅度
-                shift_direction = random.choice([-1, 1]) # -1: 向左平移, 1: 向右平移
+                shift_direction = random.choice([-1, 1])
                 shift_px = random.randint(20, 50) * shift_direction
-                
-                # 根據平移方向，創造一個修正後的輪速標籤
-                correction_strength = 2.5 # 一個微小的轉向修正值
-                if shift_px < 0: # 影像向左平移 (模擬車輛偏左)，需要向右轉修正
+                correction_strength = 2.5
+                if shift_px < 0:
                     targets = torch.tensor([l_speed + correction_strength, r_speed - correction_strength], dtype=torch.float32)
-                else: # 影像向右平移 (模擬車輛偏右)，需要向左轉修正
+                else:
                     targets = torch.tensor([l_speed - correction_strength, r_speed + correction_strength], dtype=torch.float32)
 
-        # 2. 讀取並處理影像序列
         sequence_images = []
         for i in range(start_index, end_index):
             img_name = self.annotations.iloc[i]['img_path']
             img_path = os.path.join(self.img_dir, img_name)
             image = Image.open(img_path).convert('RGB')
-            
-            # 如果觸發了直線增強，對序列中的每張圖應用相同的平移
             if apply_straight_aug:
                 image = image.transform(image.size, Image.AFFINE, (1, 0, -shift_px, 0, 1, 0))
-
             if self.transform:
                 image = self.transform(image)
             sequence_images.append(image)
@@ -124,7 +105,6 @@ class DrivingDataset(Dataset):
 
 # --- 2. Transformer 模型架構 ---
 class PositionalEncoding(nn.Module):
-    # ... (此部分程式碼不變) ...
     def __init__(self, d_model, dropout=0.1, max_len=50):
         super(PositionalEncoding, self).__init__()
         self.dropout = nn.Dropout(p=dropout)
@@ -140,7 +120,6 @@ class PositionalEncoding(nn.Module):
         return self.dropout(x)
 
 class VisionTransformerDriver(nn.Module):
-    # ... (此部分程式碼不變) ...
     def __init__(self, d_model, nhead, num_encoder_layers, dropout, num_classes=2):
         super(VisionTransformerDriver, self).__init__()
         resnet = models.resnet18(weights=models.ResNet18_Weights.DEFAULT)
@@ -165,7 +144,7 @@ class VisionTransformerDriver(nn.Module):
         out = self.output_fc(cls_output)
         return out
 
-# --- 預覽與訓練函式 (與之前版本相同) ---
+# --- 預覽與訓練函式 ---
 def show_prediction_preview(sequences_batch, targets_batch, outputs_batch, mode="Validation"):
     # ... (此部分程式碼不變) ...
     batch_previews = []
@@ -205,8 +184,8 @@ def run_epoch(model, dataloader, criterion, optimizer, device, is_training, epoc
             sequences, targets = sequences.to(device), targets.to(device)
             outputs = model(sequences)
             loss = criterion(outputs, targets)
-            if SHOW_PREVIEW:
-                mode = "Training" if is_training else "Validation"
+            if SHOW_PREVIEW and is_training:
+                mode = "Training"
                 show_prediction_preview(sequences, targets, outputs, mode=mode)
             if is_training:
                 optimizer.zero_grad()
@@ -235,11 +214,10 @@ if __name__ == '__main__':
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         print(f"將使用設備: {device}")
 
-        # 【修改點】使用自定義的 CustomTopCrop 類別取代 lambda
         train_transform = transforms.Compose([
             CustomTopCrop(CROP_TOP_PIXELS),
-            transforms.ColorJitter(brightness=0.3, contrast=0.3, saturation=0.2), # 通用增強
-            transforms.RandomAffine(degrees=5, translate=(0.05, 0)), # 通用增強
+            transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.3),
+            transforms.RandomAffine(degrees=7, translate=(0.07, 0)),
             transforms.Resize((IMG_HEIGHT, IMG_WIDTH)),
             transforms.ToTensor(),
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
@@ -252,13 +230,11 @@ if __name__ == '__main__':
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
         ])
         
-        # 初始化資料集時傳入不同的轉換流程和 is_training 標記
         train_dataset = DrivingDataset(TRAIN_CSV_PATH, IMG_DIR, SEQUENCE_LENGTH, transform=train_transform, is_training=True)
         val_dataset = DrivingDataset(VAL_CSV_PATH, IMG_DIR, SEQUENCE_LENGTH, transform=val_test_transform, is_training=False)
         test_dataset = DrivingDataset(TEST_CSV_PATH, IMG_DIR, SEQUENCE_LENGTH, transform=val_test_transform, is_training=False)
 
-        # 在 DataLoader 中加入 num_workers 和 pin_memory
-        num_workers = 4 # 建議設為CPU核心數的一半或全部，可自行調整
+        num_workers = 4
         train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=num_workers, pin_memory=True)
         val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=num_workers, pin_memory=True)
         test_loader = DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=num_workers, pin_memory=True)
@@ -268,30 +244,59 @@ if __name__ == '__main__':
 
         model = VisionTransformerDriver(D_MODEL, N_HEAD, N_LAYERS, DROPOUT).to(device)
         criterion = nn.MSELoss()
-        optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
+        # 【修改點】在優化器中加入 weight_decay
+        optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE, weight_decay=1e-4)
+        # 【修改點】定義學習率排程器 (移除 verbose 參數)
+        scheduler = ReduceLROnPlateau(optimizer, 'min', factor=0.5, patience=2)
 
-        print("\n--- 開始訓練與驗證 Transformer 模型 ---")
+        # 早停法變數初始化
+        patience = 5 # 稍微增加早停的耐心，因為排程器會幫助模型跳出局部最優
+        epochs_no_improve = 0
+        best_val_loss = float('inf')
+
+        print("\n--- 開始訓練與驗證 (已啟用早停法與學習率排程) ---")
         for epoch in range(EPOCHS):
             start_time = time.time()
+            
             train_desc = f"訓練中 Epoch {epoch+1:02d}/{EPOCHS}"
             train_loss = run_epoch(model, train_loader, criterion, optimizer, device, is_training=True, epoch_desc=train_desc)
+            
             val_desc = f"驗證中 Epoch {epoch+1:02d}/{EPOCHS}"
             val_loss = run_epoch(model, val_loader, criterion, None, device, is_training=False, epoch_desc=val_desc)
+            
+            # 【修改點】根據驗證損失調整學習率
+            scheduler.step(val_loss)
+
             epoch_time = time.time() - start_time
-            print(f'週期 [{epoch+1:02d}/{EPOCHS}] | 訓練損失: {train_loss:.4f} | 驗證損失: {val_loss:.4f} | 耗時: {epoch_time:.2f}s')
+            # 【修改點】取得並印出目前的學習率
+            current_lr = optimizer.param_groups[0]['lr']
+            print(f'週期 [{epoch+1:02d}/{EPOCHS}] | 訓練損失: {train_loss:.4f} | '
+                  f'驗證損失: {val_loss:.4f} | 學習率: {current_lr:.1e} | 耗時: {epoch_time:.2f}s')
+
+            # 早停法邏輯判斷
+            if val_loss < best_val_loss:
+                print(f'  驗證損失從 {best_val_loss:.4f} 改善至 {val_loss:.4f}。儲存模型至 {BEST_MODEL_SAVE_PATH}')
+                best_val_loss = val_loss
+                epochs_no_improve = 0
+                torch.save(model.state_dict(), BEST_MODEL_SAVE_PATH)
+            else:
+                epochs_no_improve += 1
+                print(f'  驗證損失未改善。計數: {epochs_no_improve}/{patience}')
+
+            if epochs_no_improve >= patience:
+                print(f"\n驗證損失已連續 {patience} 個週期未改善。觸發早停法！")
+                break
 
         print("--- 訓練完成 ---")
-        torch.save(model.state_dict(), MODEL_SAVE_PATH)
-        print(f"模型已儲存至 {MODEL_SAVE_PATH}")
         
         if SHOW_PREVIEW:
             cv2.destroyAllWindows()
 
-        print("\n--- 在測試集上評估最終模型 ---")
-        original_show_preview_state = SHOW_PREVIEW
-        SHOW_PREVIEW = False
+        # 載入表現最好的模型進行最終測試
+        print(f"\n--- 載入最佳模型 (驗證損失: {best_val_loss:.4f}) 進行最終評估 ---")
+        model.load_state_dict(torch.load(BEST_MODEL_SAVE_PATH))
+
         test_loss = run_epoch(model, test_loader, criterion, None, device, is_training=False, epoch_desc="測試中")
-        SHOW_PREVIEW = original_show_preview_state
         print(f"--- 最終測試損失: {test_loss:.4f} ---")
         
         print("\n--- 在測試集上執行預測範例 ---")

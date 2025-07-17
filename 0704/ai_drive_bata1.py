@@ -219,7 +219,7 @@ create_zebra_crossing(start_pos=[5, 13.8, 0.0965], num_lines=9, spacing=0.3125)
 # Humanoid
 humanoidStartPos = [5, 13.3, 1]
 humanoidStartOrientation = p.getQuaternionFromEuler([0, 0, np.pi/2])
-humanoid = p.loadURDF('straight_scaled_0.5x.urdf', humanoidStartPos, humanoidStartOrientation)
+humanoid = p.loadURDF('human.urdf', humanoidStartPos, humanoidStartOrientation)
 cid = p.createConstraint(humanoid, -1, -1, -1, p.JOINT_POINT2POINT, [0, 0, 0], [0, 0, 0], [humanoidStartPos[0], humanoidStartPos[1], 0.5])
 p.changeConstraint(cid, maxForce=50)
 

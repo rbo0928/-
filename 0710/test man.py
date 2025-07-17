@@ -3,12 +3,10 @@ from pybullet_utils import gazebo_world_parser
 import pybullet_data
 import cv2
 import time
-import random
 import numpy as np
 import datetime, os
 import pandas as pd
 from sklearn.model_selection import train_test_split
-import shutil
 
 data_log = []
 SAVE_IMG = True
@@ -138,7 +136,7 @@ def setup_recording_folders():
 physicsClient = p.connect(p.GUI)
 p.setAdditionalSearchPath(pybullet_data.getDataPath())
 p.loadURDF("plane.urdf")
-p.loadURDF(r"D:\Code\test.urdf", basePosition=[0,0,0.1])
+p.loadURDF(r"0710/test.urdf", basePosition=[0,0,0.1])
 p.setGravity(0, 0, -9.8)
 p.setRealTimeSimulation(1)
 #create_zebra_crossing(start_pos=[5, 13.8, 0.0965], num_lines=9, spacing=0.3125)
@@ -146,7 +144,7 @@ p.setRealTimeSimulation(1)
 # Humanoid
 humanoidStartPos = [5, 13.3, 0.1]
 humanoidStartOrientation = p.getQuaternionFromEuler([0, 0, np.pi/2])
-humanoid = p.loadURDF('man.urdf', humanoidStartPos, humanoidStartOrientation)
+humanoid = p.loadURDF('0710/man.urdf', humanoidStartPos, humanoidStartOrientation)
 cid = p.createConstraint(humanoid, -1, -1, -1, p.JOINT_POINT2POINT, [0, 0, 0], [0, 0, 0], [humanoidStartPos[0], humanoidStartPos[1], 0.5])
 p.changeConstraint(cid, maxForce=50)
 current_yaw = np.pi/2
@@ -303,15 +301,15 @@ try:
         speed_signed = np.dot(speed_vec, forward_vector)
 
         # HUD
-        hud_text = f"XYZ: ({r2d2_pos[0]:.3f}, {r2d2_pos[1]:.3f}, {r2d2_pos[2]:.3f})"
-        cv2.putText(img, hud_text, (290, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 0), 2, cv2.LINE_AA)
-        for joint in [0, 1, 2, 3]:
-            joint_state = p.getJointState(r2d2, joint)
-            angular_velocity = joint_state[1]
-            cv2.putText(img, f"Wheel {joint}: {angular_velocity:.2f} rad/s",
-                        (10, 20 + joint * 25),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.55, (50, 50, 255), 2)
-        cv2.putText(img, f"Car Speed: {speed_signed:.2f} m/s", (10, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 100, 200), 2)
+        #hud_text = f"XYZ: ({r2d2_pos[0]:.3f}, {r2d2_pos[1]:.3f}, {r2d2_pos[2]:.3f})"
+        #cv2.putText(img, hud_text, (290, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 0), 2, cv2.LINE_AA)
+        #for joint in [0, 1, 2, 3]:
+        #    joint_state = p.getJointState(r2d2, joint)
+        #    angular_velocity = joint_state[1]
+        #    cv2.putText(img, f"Wheel {joint}: {angular_velocity:.2f} rad/s",
+        #                (10, 20 + joint * 25),
+        #                cv2.FONT_HERSHEY_SIMPLEX, 0.55, (50, 50, 255), 2)
+        #cv2.putText(img, f"Car Speed: {speed_signed:.2f} m/s", (10, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 100, 200), 2)
         
         if recording:
             # <<< 修改 >>> 傳入 folder_path 參數

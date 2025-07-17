@@ -18,7 +18,7 @@ import torchvision.transforms.functional as TF
 
 # --- 參數設定 ---
 # 資料路徑 (讀取分割好的檔案)
-DATA_DIR = '2025_07_02/2/'
+DATA_DIR = '2025_07_11/1/'
 IMG_DIR = os.path.join(DATA_DIR, 'recorded_images')
 TRAIN_CSV_PATH = os.path.join(DATA_DIR, 'train_data.csv')
 VAL_CSV_PATH = os.path.join(DATA_DIR, 'val_data.csv')
@@ -246,8 +246,8 @@ if __name__ == '__main__':
         criterion = nn.MSELoss()
         # 【修改點】在優化器中加入 weight_decay
         optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE, weight_decay=1e-4)
-        # 【修改點】定義學習率排程器
-        scheduler = ReduceLROnPlateau(optimizer, 'min', factor=0.5, patience=2, verbose=True)
+        # 【修改點】定義學習率排程器 (移除 verbose 參數)
+        scheduler = ReduceLROnPlateau(optimizer, 'min', factor=0.5, patience=2)
 
         # 早停法變數初始化
         patience = 5 # 稍微增加早停的耐心，因為排程器會幫助模型跳出局部最優
@@ -268,8 +268,10 @@ if __name__ == '__main__':
             scheduler.step(val_loss)
 
             epoch_time = time.time() - start_time
+            # 【修改點】取得並印出目前的學習率
+            current_lr = optimizer.param_groups[0]['lr']
             print(f'週期 [{epoch+1:02d}/{EPOCHS}] | 訓練損失: {train_loss:.4f} | '
-                  f'驗證損失: {val_loss:.4f} | 耗時: {epoch_time:.2f}s')
+                  f'驗證損失: {val_loss:.4f} | 學習率: {current_lr:.1e} | 耗時: {epoch_time:.2f}s')
 
             # 早停法邏輯判斷
             if val_loss < best_val_loss:

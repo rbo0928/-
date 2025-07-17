@@ -3,12 +3,10 @@ from pybullet_utils import gazebo_world_parser
 import pybullet_data
 import cv2
 import time
-import random
 import numpy as np
 import datetime, os
 import pandas as pd
 from sklearn.model_selection import train_test_split
-import shutil
 
 data_log = []
 SAVE_IMG = True
@@ -60,7 +58,7 @@ def get_lane_offset_by_opencv(img, width):
             right_xs.append(x_mid)
             cv2.line(img, (x1 + width//2, y1 + img.shape[0] - roi_margin),
                      (x2 + width//2, y2 + img.shape[0] - roi_margin), (255, 0, 0), 2)
-            
+
     # Step 6: 計算車道中心
     if left_xs and right_xs:
         lane_center = (np.mean(left_xs) + np.mean(right_xs)) / 2
@@ -138,7 +136,7 @@ def setup_recording_folders():
 physicsClient = p.connect(p.GUI)
 p.setAdditionalSearchPath(pybullet_data.getDataPath())
 p.loadURDF("plane.urdf")
-p.loadURDF(r"D:\Code\test.urdf", basePosition=[0,0,0.1])
+p.loadURDF(r"0710/test.urdf", basePosition=[0,0,0.1])
 p.setGravity(0, 0, -9.8)
 p.setRealTimeSimulation(1)
 #create_zebra_crossing(start_pos=[5, 13.8, 0.0965], num_lines=9, spacing=0.3125)

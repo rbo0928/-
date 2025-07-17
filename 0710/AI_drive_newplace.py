@@ -383,15 +383,15 @@ try:
         speed_signed = np.dot(speed_vec, forward_vector)
 
         # HUD
-        hud_text = f"XYZ: ({r2d2_pos[0]:.3f}, {r2d2_pos[1]:.3f}, {r2d2_pos[2]:.3f})"
-        cv2.putText(img, hud_text, (290, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 0), 2, cv2.LINE_AA)
-        for joint in [0, 1, 2, 3]:
-            joint_state = p.getJointState(r2d2, joint)
-            angular_velocity = joint_state[1]
-            cv2.putText(img, f"Wheel {joint}: {angular_velocity:.2f} rad/s",
-                        (10, 20 + joint * 25),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.55, (50, 50, 255), 2)
-        cv2.putText(img, f"Car Speed: {speed_signed:.2f} m/s", (10, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 100, 200), 2)
+        #hud_text = f"XYZ: ({r2d2_pos[0]:.3f}, {r2d2_pos[1]:.3f}, {r2d2_pos[2]:.3f})"
+        #cv2.putText(img, hud_text, (290, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 0), 2, cv2.LINE_AA)
+        #for joint in [0, 1, 2, 3]:
+        #    joint_state = p.getJointState(r2d2, joint)
+        #    angular_velocity = joint_state[1]
+        #    cv2.putText(img, f"Wheel {joint}: {angular_velocity:.2f} rad/s",
+        #                (10, 20 + joint * 25),
+        #                cv2.FONT_HERSHEY_SIMPLEX, 0.55, (50, 50, 255), 2)
+        #cv2.putText(img, f"Car Speed: {speed_signed:.2f} m/s", (10, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 100, 200), 2)
         
         if recording:
             # <<< 修改 >>> 傳入 folder_path 參數
