@@ -3,12 +3,10 @@ from pybullet_utils import gazebo_world_parser
 import pybullet_data
 import cv2
 import time
-import random
 import numpy as np
 import datetime, os
 import pandas as pd
 from sklearn.model_selection import train_test_split
-import shutil
 
 # --- AI 模型整合部分 ---
 import torch
@@ -36,7 +34,7 @@ ORIGINAL_HEIGHT = 480
 ORIGINAL_WIDTH = 640
 
 data_log = []
-SAVE_IMG = True 
+SAVE_IMG = True
 
 actual_lwheel_value = 0
 actual_rwheel_value = 0
@@ -118,17 +116,19 @@ def predict_speeds(model, image_sequence, transform, device):
     predicted_speeds = prediction.cpu().numpy().flatten()
     return predicted_speeds[0], predicted_speeds[1] # lwheel, rwheel
 
+
 # ---------------------------
 # Lane offset (via OpenCV)
 # ---------------------------
 def get_lane_offset_by_opencv(img, width):
+
     # Step 1: 提取白色區域（避免抓到柏油）
     hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
     white_mask = cv2.inRange(hsv, (0, 0, 200), (180, 30, 255))
     masked = cv2.bitwise_and(img, img, mask=white_mask)
     gray = cv2.cvtColor(masked, cv2.COLOR_BGR2GRAY)
     
-    # Step 2: Canny 邊緣
+   # # Step 2: Canny 邊緣
     blur = cv2.GaussianBlur(gray, (5, 5), 0)
     edges = cv2.Canny(blur, 50, 150)
 
@@ -151,8 +151,8 @@ def get_lane_offset_by_opencv(img, width):
             x_mid = (x1 + x2) / 2
             left_xs.append(x_mid)
             cv2.line(img, (x1, y1 + img.shape[0] - roi_margin), (x2, y2 + img.shape[0] - roi_margin), (0, 255, 0), 2)
-
     right_xs = []
+
     if right_lines is not None:
         for line in right_lines:
             x1, y1, x2, y2 = line[0]
@@ -175,7 +175,8 @@ def get_lane_offset_by_opencv(img, width):
 # ---------------------------
 # Data Logging
 # ---------------------------
-def log_data(pic_num, img, side_value, wheel_value, lwheel_value, rwheel_value, speed_signed, seg_mask, width, height, lane_offset=0):
+# <<< 修改 >>> 增加 folder_path 參數，避免依賴全域變數
+def log_data(folder_path, pic_num, img, side_value, wheel_value, lwheel_value, rwheel_value, speed_signed, seg_mask, width, height):
     img_name = f"{pic_num:05d}.png"
     img_path = os.path.join(folder_path, 'recorded_images', img_name)
     cv2.imwrite(img_path, img)
@@ -184,15 +185,16 @@ def log_data(pic_num, img, side_value, wheel_value, lwheel_value, rwheel_value, 
         "img_path": img_name,
         "steering": side_value,
         "throttle": wheel_value,
-        "lwheel": lwheel_value,
-        "rwheel": rwheel_value,
+        "lwheel": actual_lwheel_value ,
+        "rwheel": actual_rwheel_value,
         "speed_signed": speed_signed,
-        "lane_offset": lane_offset,
+        # "lane_offset": lane_offset, # 您原本的程式碼已註解此行
         "timestamp": datetime.datetime.now().isoformat()
     }
     data_log.append(entry)
 
-def save_csv_log():
+# <<< 修改 >>> 增加 folder_path 參數
+def save_csv_log(folder_path):
     df = pd.DataFrame(data_log)
     df.to_csv(os.path.join(folder_path, "log.csv"), index=False)
 
@@ -207,14 +209,39 @@ def create_zebra_crossing(start_pos=[0, 0, 0.05], num_lines=6, spacing=0.3, line
         p.createMultiBody(baseMass=0, baseCollisionShapeIndex=colBoxId, baseVisualShapeIndex=visBoxId, basePosition=basePosition)
 
 # ---------------------------
+# <<< 新增 >>> 將建立資料夾的邏輯封裝成一個函式
+# ---------------------------
+def setup_recording_folders():
+    """
+    建立本次執行的資料記錄資料夾，並返回資料夾路徑。
+    """
+    now = datetime.datetime.now(tz=datetime.timezone(datetime.timedelta(hours=8)))
+    day_dir = now.strftime('%Y_%m_%d')
+    if not os.path.isdir(day_dir):
+        os.mkdir(day_dir)
+    
+    i = 1
+    while True:
+        folder_name = str(i)
+        path = os.path.join(day_dir, folder_name)
+        if not os.path.exists(path):
+            os.makedirs(path)
+            os.makedirs(os.path.join(path, 'recorded_images'))
+            if SAVE_IMG:
+                print(f"[INFO] 建立新資料夾於: {path}")
+            return path
+        i += 1
+
+# ---------------------------
 # PyBullet Initialization
 # ---------------------------
 physicsClient = p.connect(p.GUI)
 p.setAdditionalSearchPath(pybullet_data.getDataPath())
-gazebo_world_parser.parseWorld(p, filepath="worlds/new.world")
+p.loadURDF("plane.urdf")
+p.loadURDF(r"0710/test.urdf", basePosition=[0,0,0.1])
 p.setGravity(0, 0, -9.8)
 p.setRealTimeSimulation(1)
-create_zebra_crossing(start_pos=[5, 13.8, 0.0965], num_lines=9, spacing=0.3125)
+#create_zebra_crossing(start_pos=[5, 13.8, 0.0965], num_lines=9, spacing=0.3125)
 
 # Humanoid
 humanoidStartPos = [5, 13.3, 1]
@@ -222,9 +249,14 @@ humanoidStartOrientation = p.getQuaternionFromEuler([0, 0, np.pi/2])
 humanoid = p.loadURDF('human.urdf', humanoidStartPos, humanoidStartOrientation)
 cid = p.createConstraint(humanoid, -1, -1, -1, p.JOINT_POINT2POINT, [0, 0, 0], [0, 0, 0], [humanoidStartPos[0], humanoidStartPos[1], 0.5])
 p.changeConstraint(cid, maxForce=50)
+current_yaw = np.pi/2
+move_direction = 0
+is_forward_pressed = False
+is_backward_pressed = False
+last_pos, _ = p.getBasePositionAndOrientation(humanoid)
 
 # Vehicle
-r2d2StartPos = [2, 14.4, 2]
+r2d2StartPos = [0, 1.25, 2]
 r2d2StartOrientation = p.getQuaternionFromEuler([0, 0, 0])
 r2d2 = p.loadURDF('real_car.urdf', r2d2StartPos, r2d2StartOrientation)
 numJoints = p.getNumJoints(r2d2)
@@ -241,27 +273,10 @@ width, height = 640, 480
 fov, aspect, near, far = 60, width/height, 0.1, 100
 projection_matrix = p.computeProjectionMatrixFOV(fov, aspect, near, far)
 
-# Folder setup
-now = datetime.datetime.now(tz=datetime.timezone(datetime.timedelta(hours=8)))
-day_dir = now.strftime('%Y_%m_%d')
-pic_num = 0
-if not os.path.isdir(day_dir):
-    os.mkdir(day_dir)
-i = 1
-while True:
-    folder_name = str(i)
-    folder_path = os.path.join(day_dir, folder_name)
-    if not os.path.exists(folder_path):
-        os.makedirs(folder_path)
-        os.makedirs(os.path.join(folder_path, 'recorded_images'))
-        if SAVE_IMG:
-            os.makedirs(os.path.join(folder_path, 'deep'))
-            os.makedirs(os.path.join(folder_path, 'segmentation'))
-        break
-    i += 1
+# <<< 修改 >>> 移除啟動時就建立資料夾的程式碼
+# pic_num = 0
+# if not os.path.isdir(day_dir): ... (整段移除)
 
-# --- 主迴圈初始化 ---
-# AI 變數
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 ai_model = load_model(MODEL_PATH, device)
 ai_transform = transforms.Compose([
@@ -277,6 +292,10 @@ autodrive_enabled = False
 # Main loop
 # ---------------------------
 recording = False
+first_record_press = True # <<< 新增 >>> 狀態旗標，判斷是否為第一次按下錄製
+folder_path = None      # <<< 新增 >>> 初始化 folder_path
+pic_num = 0             # <<< 新增 >>> 初始化圖片編號
+
 try:
     while True:
         keys = p.getKeyboardEvents()
@@ -284,25 +303,26 @@ try:
             recording = not recording
             print(f"[INFO] 模仿學習資料記錄 {'啟動' if recording else '暫停'}")
             
-         # 【新功能】切換自動駕駛模式
+            # <<< 修改 >>> 核心邏輯：當開始錄製且是第一次按下時，才建立資料夾
+            if recording and first_record_press:
+                folder_path = setup_recording_folders()
+                first_record_press = False # 更新旗標，確保不再重複建立
+        
         if ord('a') in keys and keys[ord('a')] & p.KEY_WAS_TRIGGERED:
             autodrive_enabled = not autodrive_enabled
             print(f"[INFO] AI driver {'on' if autodrive_enabled else 'off'}")
             # 切換模式時重設速度，避免暴衝
             actual_lwheel_value = 0
             actual_rwheel_value = 0
-
+        
         if autodrive_enabled and ai_model is not None:
-            # --- AI 控制 ---
             if len(image_history) == SEQUENCE_LENGTH:
                 pred_l, pred_r = predict_speeds(ai_model, list(image_history), ai_transform, device)
-                lwheel_value = pred_l
-                rwheel_value = pred_r
+                actual_lwheel_value = pred_l
+                actual_rwheel_value = pred_r
             else:
-                # 影像序列尚未集滿，暫不動作
-                lwheel_value, rwheel_value = 0, 0
+                actual_lwheel_value, actual_rwheel_value = 0, 0
         else:
-        # Vehicle control
             wheel_value, side_value = 0, 0
             if p.B3G_UP_ARROW in keys and keys[p.B3G_UP_ARROW] & p.KEY_IS_DOWN:
                 wheel_value = forward_speed
@@ -350,12 +370,12 @@ try:
 
         img = np.reshape(np.array(rgb_img, dtype=np.uint8), (height, width, 4))
         img = cv2.cvtColor(img, cv2.COLOR_RGBA2BGR)
+
+        image_history.append(Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB)))
+
+        # Lane offset
         # lane_offset = get_lane_offset_by_opencv(img, width)
 
-        # 將當前畫面存入歷史序列 (PIL Image格式)
-        pil_img = Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
-        image_history.append(pil_img)
-        
         # Speed
         linear_velocity, _ = p.getBaseVelocity(r2d2)
         speed_vec = np.array(linear_velocity)
@@ -363,26 +383,19 @@ try:
         speed_signed = np.dot(speed_vec, forward_vector)
 
         # HUD
-        cv2.putText(img, f"Car Speed: {speed_signed:.2f} m/s", (10, 125), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 100, 200), 2)
-        # cv2.putText(img, f"Lane Offset: {lane_offset:.2f}", (10, 150), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 200, 100), 2)
-        # 顯示四個輪子的角速度
-        for joint in [0, 1, 2, 3]:
-            joint_state = p.getJointState(r2d2, joint)
-            angular_velocity = joint_state[1]  # jointState[1] 是角速度
-            cv2.putText(img, f"Wheel {joint}: {angular_velocity:.2f} rad/s",
-                        (10, 25 + joint * 25),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.55, (50, 50, 255), 2)
-
+        #hud_text = f"XYZ: ({r2d2_pos[0]:.3f}, {r2d2_pos[1]:.3f}, {r2d2_pos[2]:.3f})"
+        #cv2.putText(img, hud_text, (290, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 0), 2, cv2.LINE_AA)
+        #for joint in [0, 1, 2, 3]:
+        #    joint_state = p.getJointState(r2d2, joint)
+        #    angular_velocity = joint_state[1]
+        #    cv2.putText(img, f"Wheel {joint}: {angular_velocity:.2f} rad/s",
+        #                (10, 20 + joint * 25),
+        #                cv2.FONT_HERSHEY_SIMPLEX, 0.55, (50, 50, 255), 2)
+        #cv2.putText(img, f"Car Speed: {speed_signed:.2f} m/s", (10, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 100, 200), 2)
+        
         if recording:
-            log_data(pic_num, img, side_value, wheel_value, actual_lwheel_value, actual_rwheel_value, speed_signed, seg_mask, width, height)
-            depth_real = (far * near) / (far - (far - near) * depth_buffer)
-            depth_mm = (depth_real * 1000).astype(np.uint16)
-            cv2.imwrite(os.path.join(folder_path, 'deep', f"{pic_num:05d}.png"), depth_mm)
-            color_mask = np.zeros((height, width, 3), dtype=np.uint8)
-            for obj_id in np.unique(seg_mask):
-                color = [random.randint(0,255) for _ in range(3)]
-                color_mask[seg_mask == obj_id] = color
-            cv2.imwrite(os.path.join(folder_path, 'segmentation', f"{pic_num:05d}.png"), color_mask)
+            # <<< 修改 >>> 傳入 folder_path 參數
+            log_data(folder_path, pic_num, img, side_value, wheel_value, lwheel_value, rwheel_value, speed_signed, seg_mask, width, height)
             pic_num += 1
 
         cv2.imshow("Car Camera", img)
@@ -391,40 +404,9 @@ try:
         p.stepSimulation()
         time.sleep(0.01)
 finally:
-    if SAVE_IMG and len(data_log) > 0:
-        save_csv_log()
+    # <<< 修改 >>> 增加條件判斷，確保只有在錄製過資料時才存檔
+    if folder_path and SAVE_IMG and len(data_log) > 0:
+        save_csv_log(folder_path) # <<< 修改 >>> 傳入 folder_path
         print(f"[INFO] 已儲存 {len(data_log)} 筆模仿學習資料至：{folder_path}/log.csv")
-
-        # 新增切分功能
-        def split_dataset(csv_path, img_folder, output_folder,
-                          val_ratio=0.1, test_ratio=0.1, random_state=42):
-            df = pd.read_csv(csv_path)
-            trainval_df, test_df = train_test_split(
-                df, test_size=test_ratio, random_state=random_state, shuffle=True
-            )
-            val_size = val_ratio / (1 - test_ratio)
-            train_df, val_df = train_test_split(
-                trainval_df, test_size=val_size, random_state=random_state, shuffle=True
-            )
-
-            splits = {"train": train_df, "val": val_df, "test": test_df}
-            for split_name, split_df in splits.items():
-                split_img_dir = os.path.join(output_folder, split_name, "images")
-                os.makedirs(split_img_dir, exist_ok=True)
-                for _, row in split_df.iterrows():
-                    src = os.path.join(img_folder, row["img_path"])
-                    dst = os.path.join(split_img_dir, row["img_path"])
-                    shutil.copy(src, dst)
-                split_df.to_csv(os.path.join(output_folder, split_name, "log.csv"), index=False)
-
-        # 執行切分
-        split_dataset(
-            csv_path=os.path.join(folder_path, "log.csv"),
-            img_folder=os.path.join(folder_path, "recorded_images"),
-            output_folder=folder_path,
-            val_ratio=0.1,
-            test_ratio=0.1
-        )
-        print("[INFO] 已將資料切分為 train/val/test 三組資料集")
 
     cv2.destroyAllWindows()

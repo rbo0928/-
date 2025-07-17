@@ -3,12 +3,10 @@ from pybullet_utils import gazebo_world_parser
 import pybullet_data
 import cv2
 import time
-import random
 import numpy as np
 import datetime, os
 import pandas as pd
 from sklearn.model_selection import train_test_split
-import shutil
 
 data_log = []
 SAVE_IMG = True
@@ -28,7 +26,7 @@ def get_lane_offset_by_opencv(img, width):
     masked = cv2.bitwise_and(img, img, mask=white_mask)
     gray = cv2.cvtColor(masked, cv2.COLOR_BGR2GRAY)
     
-   # # Step 2: Canny 邊緣
+    # Step 2: Canny 邊緣
     blur = cv2.GaussianBlur(gray, (5, 5), 0)
     edges = cv2.Canny(blur, 50, 150)
 
@@ -139,7 +137,7 @@ physicsClient = p.connect(p.GUI)
 p.setAdditionalSearchPath(pybullet_data.getDataPath())
 p.loadURDF("plane.urdf")
 gazebo_world_parser.parseWorld(p, filepath="worlds/new.world")
-p.loadURDF(r"D:\Code\full_track copy.urdf", basePosition=[0,0,0.1])
+p.loadURDF(r"0702/full_track copy.urdf", basePosition=[0,0,0.1])
 p.setGravity(0, 0, -9.8)
 p.setRealTimeSimulation(1)
 create_zebra_crossing(start_pos=[5, 13.8, 0.0965], num_lines=9, spacing=0.3125)

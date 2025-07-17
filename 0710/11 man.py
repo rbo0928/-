@@ -3,10 +3,12 @@ from pybullet_utils import gazebo_world_parser
 import pybullet_data
 import cv2
 import time
+import random
 import numpy as np
 import datetime, os
 import pandas as pd
 from sklearn.model_selection import train_test_split
+import shutil
 
 data_log = []
 SAVE_IMG = True
@@ -58,7 +60,7 @@ def get_lane_offset_by_opencv(img, width):
             right_xs.append(x_mid)
             cv2.line(img, (x1 + width//2, y1 + img.shape[0] - roi_margin),
                      (x2 + width//2, y2 + img.shape[0] - roi_margin), (255, 0, 0), 2)
-
+            
     # Step 6: 計算車道中心
     if left_xs and right_xs:
         lane_center = (np.mean(left_xs) + np.mean(right_xs)) / 2
@@ -136,15 +138,16 @@ def setup_recording_folders():
 physicsClient = p.connect(p.GUI)
 p.setAdditionalSearchPath(pybullet_data.getDataPath())
 p.loadURDF("plane.urdf")
-p.loadURDF(r"0710/test.urdf", basePosition=[0,0,0.1])
+gazebo_world_parser.parseWorld(p, filepath="worlds/new.world")
+p.loadURDF(r"0702/full_track copy.urdf", basePosition=[0,0,0.1])
 p.setGravity(0, 0, -9.8)
 p.setRealTimeSimulation(1)
 #create_zebra_crossing(start_pos=[5, 13.8, 0.0965], num_lines=9, spacing=0.3125)
 
 # Humanoid
-humanoidStartPos = [5, 13.3, 1]
+humanoidStartPos = [5, 13.3, 0.1]
 humanoidStartOrientation = p.getQuaternionFromEuler([0, 0, np.pi/2])
-humanoid = p.loadURDF('human.urdf', humanoidStartPos, humanoidStartOrientation)
+humanoid = p.loadURDF('0710/man.urdf', humanoidStartPos, humanoidStartOrientation)
 cid = p.createConstraint(humanoid, -1, -1, -1, p.JOINT_POINT2POINT, [0, 0, 0], [0, 0, 0], [humanoidStartPos[0], humanoidStartPos[1], 0.5])
 p.changeConstraint(cid, maxForce=50)
 current_yaw = np.pi/2
@@ -154,7 +157,7 @@ is_backward_pressed = False
 last_pos, _ = p.getBasePositionAndOrientation(humanoid)
 
 # Vehicle
-r2d2StartPos = [0, 1.25, 2]
+r2d2StartPos = [0, -1.225, 2]
 r2d2StartOrientation = p.getQuaternionFromEuler([0, 0, 0])
 r2d2 = p.loadURDF('real_car.urdf', r2d2StartPos, r2d2StartOrientation)
 numJoints = p.getNumJoints(r2d2)
@@ -242,8 +245,8 @@ try:
         p.resetBasePositionAndOrientation(humanoid, last_pos, stand_orientation)
 
         # 維持人物站直（設定腿部關節位置）
-        for joint_index in range(4):
-            p.setJointMotorControl2(humanoid, jointIndex=joint_index, controlMode=p.POSITION_CONTROL, targetPosition=0)
+        #for joint_index in range(4):
+        #    p.setJointMotorControl2(humanoid, jointIndex=joint_index, controlMode=p.POSITION_CONTROL, targetPosition=0)
 
         # Vehicle control
         wheel_value, side_value = 0, 0

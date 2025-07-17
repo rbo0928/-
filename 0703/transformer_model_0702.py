@@ -16,7 +16,7 @@ from tqdm import tqdm # 【修改點】匯入tqdm
 
 # --- 參數設定 ---
 # 資料路徑 (讀取分割好的檔案)
-DATA_DIR = '2025_07_02/2/'
+DATA_DIR = '2025_07_09/2/'
 IMG_DIR = os.path.join(DATA_DIR, 'recorded_images')
 TRAIN_CSV_PATH = os.path.join(DATA_DIR, 'train_data.csv')
 VAL_CSV_PATH = os.path.join(DATA_DIR, 'val_data.csv')

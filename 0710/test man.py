@@ -58,7 +58,7 @@ def get_lane_offset_by_opencv(img, width):
             right_xs.append(x_mid)
             cv2.line(img, (x1 + width//2, y1 + img.shape[0] - roi_margin),
                      (x2 + width//2, y2 + img.shape[0] - roi_margin), (255, 0, 0), 2)
-
+            
     # Step 6: 計算車道中心
     if left_xs and right_xs:
         lane_center = (np.mean(left_xs) + np.mean(right_xs)) / 2
@@ -142,9 +142,9 @@ p.setRealTimeSimulation(1)
 #create_zebra_crossing(start_pos=[5, 13.8, 0.0965], num_lines=9, spacing=0.3125)
 
 # Humanoid
-humanoidStartPos = [5, 13.3, 1]
+humanoidStartPos = [5, 13.3, 0.1]
 humanoidStartOrientation = p.getQuaternionFromEuler([0, 0, np.pi/2])
-humanoid = p.loadURDF('human.urdf', humanoidStartPos, humanoidStartOrientation)
+humanoid = p.loadURDF('0710/man.urdf', humanoidStartPos, humanoidStartOrientation)
 cid = p.createConstraint(humanoid, -1, -1, -1, p.JOINT_POINT2POINT, [0, 0, 0], [0, 0, 0], [humanoidStartPos[0], humanoidStartPos[1], 0.5])
 p.changeConstraint(cid, maxForce=50)
 current_yaw = np.pi/2
@@ -242,8 +242,8 @@ try:
         p.resetBasePositionAndOrientation(humanoid, last_pos, stand_orientation)
 
         # 維持人物站直（設定腿部關節位置）
-        for joint_index in range(4):
-            p.setJointMotorControl2(humanoid, jointIndex=joint_index, controlMode=p.POSITION_CONTROL, targetPosition=0)
+       # for joint_index in range(4):
+           # p.setJointMotorControl2(humanoid, jointIndex=joint_index, controlMode=p.POSITION_CONTROL, targetPosition=0)
 
         # Vehicle control
         wheel_value, side_value = 0, 0
@@ -301,15 +301,15 @@ try:
         speed_signed = np.dot(speed_vec, forward_vector)
 
         # HUD
-        hud_text = f"XYZ: ({r2d2_pos[0]:.3f}, {r2d2_pos[1]:.3f}, {r2d2_pos[2]:.3f})"
-        cv2.putText(img, hud_text, (290, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 0), 2, cv2.LINE_AA)
-        for joint in [0, 1, 2, 3]:
-            joint_state = p.getJointState(r2d2, joint)
-            angular_velocity = joint_state[1]
-            cv2.putText(img, f"Wheel {joint}: {angular_velocity:.2f} rad/s",
-                        (10, 20 + joint * 25),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.55, (50, 50, 255), 2)
-        cv2.putText(img, f"Car Speed: {speed_signed:.2f} m/s", (10, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 100, 200), 2)
+        #hud_text = f"XYZ: ({r2d2_pos[0]:.3f}, {r2d2_pos[1]:.3f}, {r2d2_pos[2]:.3f})"
+        #cv2.putText(img, hud_text, (290, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 0), 2, cv2.LINE_AA)
+        #for joint in [0, 1, 2, 3]:
+        #    joint_state = p.getJointState(r2d2, joint)
+        #    angular_velocity = joint_state[1]
+        #    cv2.putText(img, f"Wheel {joint}: {angular_velocity:.2f} rad/s",
+        #                (10, 20 + joint * 25),
+        #                cv2.FONT_HERSHEY_SIMPLEX, 0.55, (50, 50, 255), 2)
+        #cv2.putText(img, f"Car Speed: {speed_signed:.2f} m/s", (10, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 100, 200), 2)
         
         if recording:
             # <<< 修改 >>> 傳入 folder_path 參數
