@@ -26,7 +26,7 @@ MODEL_SAVE_PATH = 'cnn_lstm_driver_model.pth'
 
 
 # 模型與訓練參數
-SEQUENCE_LENGTH = 10  # 使用過去5張圖片來預測當前速度
+SEQUENCE_LENGTH = 10  # 使用過去10張圖片來預測當前速度
 BATCH_SIZE = 4 # 批次大小
 EPOCHS = 10  # 訓練的輪數
 LEARNING_RATE = 0.001 # 學習率

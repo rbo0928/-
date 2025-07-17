@@ -7,9 +7,8 @@ import random
 import numpy as np
 import datetime, os
 import pandas as pd
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import KFold, train_test_split
 import shutil
-from sklearn.model_selection import KFold
 
 data_log = []
 SAVE_IMG = True
@@ -111,7 +110,9 @@ def create_zebra_crossing(start_pos=[0, 0, 0.05], num_lines=6, spacing=0.3, line
 # ---------------------------
 physicsClient = p.connect(p.GUI)
 p.setAdditionalSearchPath(pybullet_data.getDataPath())
+p.loadURDF("plane.urdf")
 gazebo_world_parser.parseWorld(p, filepath="worlds/new.world")
+p.loadURDF(r"0702/full_track.urdf", basePosition=[0,0,0.1])
 p.setGravity(0, 0, -9.8)
 p.setRealTimeSimulation(1)
 create_zebra_crossing(start_pos=[5, 13.8, 0.0965], num_lines=9, spacing=0.3125)
@@ -122,9 +123,14 @@ humanoidStartOrientation = p.getQuaternionFromEuler([0, 0, np.pi/2])
 humanoid = p.loadURDF('straight_scaled_0.5x.urdf', humanoidStartPos, humanoidStartOrientation)
 cid = p.createConstraint(humanoid, -1, -1, -1, p.JOINT_POINT2POINT, [0, 0, 0], [0, 0, 0], [humanoidStartPos[0], humanoidStartPos[1], 0.5])
 p.changeConstraint(cid, maxForce=50)
+current_yaw = np.pi/2
+move_direction = 0
+is_forward_pressed = False
+is_backward_pressed = False
+last_pos, _ = p.getBasePositionAndOrientation(humanoid)
 
 # Vehicle
-r2d2StartPos = [2, 14.4, 2]
+r2d2StartPos = [0, -1.225, 2]
 r2d2StartOrientation = p.getQuaternionFromEuler([0, 0, 0])
 r2d2 = p.loadURDF('real_car.urdf', r2d2StartPos, r2d2StartOrientation)
 numJoints = p.getNumJoints(r2d2)
@@ -170,6 +176,53 @@ try:
         if ord('r') in keys and keys[ord('r')] & p.KEY_WAS_TRIGGERED:
             recording = not recording
             print(f"[INFO] 模仿學習資料記錄 {'啟動' if recording else '暫停'}")
+        if ord('o') in keys and keys[ord('o')] & p.KEY_WAS_TRIGGERED:
+            p.resetBasePositionAndOrientation(r2d2, [0, -1.225, 0.5], [0, 0, 0, 1])
+        if ord('p') in keys and keys[ord('p')] & p.KEY_WAS_TRIGGERED:
+            p.resetBasePositionAndOrientation(r2d2, [5, 14.4, 0.5], [0, 0, 0, 1])
+    
+        # 更新行人移動狀態
+        if ord('i') in keys:
+            if keys[ord('i')] & p.KEY_IS_DOWN:
+                is_forward_pressed = True
+            if keys[ord('i')] & p.KEY_WAS_RELEASED:
+                is_forward_pressed = False
+
+        if ord('k') in keys:
+            if keys[ord('k')] & p.KEY_IS_DOWN:
+                is_backward_pressed = True
+            if keys[ord('k')] & p.KEY_WAS_RELEASED:
+                is_backward_pressed = False
+
+        if is_forward_pressed:
+            move_direction = 1
+        elif is_backward_pressed:
+            move_direction = -1
+        else:
+            move_direction = 0
+
+        # 更新行人朝向（左右轉）
+        if ord('j') in keys and keys[ord('j')] & p.KEY_IS_DOWN:
+            current_yaw += 0.05
+        if ord('l') in keys and keys[ord('l')] & p.KEY_IS_DOWN:
+            current_yaw -= 0.05
+
+        # 行人位置更新
+        pos, _ = p.getBasePositionAndOrientation(humanoid)
+        if move_direction != 0:
+            dir_x = [np.cos(current_yaw), np.sin(current_yaw), 0]
+            move_speed = 0.04 * move_direction
+            last_pos = [pos[0] + dir_x[0]*move_speed, pos[1] + dir_x[1]*move_speed, pos[2]]
+        else:
+            last_pos = list(pos)
+
+        # 重設行人位置與方向
+        stand_orientation = p.getQuaternionFromEuler([0, 0, current_yaw])
+        p.resetBasePositionAndOrientation(humanoid, last_pos, stand_orientation)
+
+        # 維持人物站直（設定腿部關節位置）
+        for joint_index in range(4):
+            p.setJointMotorControl2(humanoid, jointIndex=joint_index, controlMode=p.POSITION_CONTROL, targetPosition=0)
 
         # Vehicle control
         wheel_value, side_value = 0, 0
@@ -228,16 +281,18 @@ try:
         speed_signed = np.dot(speed_vec, forward_vector)
 
         # HUD
-        cv2.putText(img, f"Car Speed: {speed_signed:.2f} m/s", (10, 125), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 100, 200), 2)
-        cv2.putText(img, f"Lane Offset: {lane_offset:.2f}", (10, 150), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 200, 100), 2)
+        hud_text = f"XYZ: ({r2d2_pos[0]:.3f}, {r2d2_pos[1]:.3f}, {r2d2_pos[2]:.3f})"
+        cv2.putText(img, hud_text, (290, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 0), 2, cv2.LINE_AA)
         # 顯示四個輪子的角速度
         for joint in [0, 1, 2, 3]:
             joint_state = p.getJointState(r2d2, joint)
             angular_velocity = joint_state[1]  # jointState[1] 是角速度
             cv2.putText(img, f"Wheel {joint}: {angular_velocity:.2f} rad/s",
-                        (10, 25 + joint * 25),
+                        (10, 20 + joint * 25),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.55, (50, 50, 255), 2)
-
+        cv2.putText(img, f"Car Speed: {speed_signed:.2f} m/s", (10, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 100, 200), 2)
+        cv2.putText(img, f"Lane Offset: {lane_offset:.2f}", (10, 145), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 200, 100), 2)
+        
         if recording:
             log_data(pic_num, img, side_value, wheel_value, lwheel_value, rwheel_value, speed_signed, seg_mask, width, height, lane_offset)
             depth_real = (far * near) / (far - (far - near) * depth_buffer)
@@ -255,83 +310,52 @@ try:
             break
         p.stepSimulation()
         time.sleep(0.01)
+except Exception as e:
+    print(f"[ERROR] {e}")
+def split_kfold_and_merge(csv_path, img_folder, output_folder, n_splits=8, train_ratio=0.7, val_ratio=0.15, test_ratio=0.15):
+    df = pd.read_csv(csv_path)
+    df = df.sort_values("timestamp")
+    kf = KFold(n_splits=n_splits, shuffle=True, random_state=42)
+    all_train, all_val, all_test = [], [], []
+    for fold, (train_idx, test_idx) in enumerate(kf.split(df)):
+        train_val_df = df.iloc[train_idx]
+        test_df = df.iloc[test_idx]
+        train_df, val_df = train_test_split(train_val_df, test_size=val_ratio/(train_ratio+val_ratio), random_state=fold)
+        all_train.append(train_df)
+        all_val.append(val_df)
+        all_test.append(test_df)
+    train_df = pd.concat(all_train).sort_values("timestamp").reset_index(drop=True)
+    val_df = pd.concat(all_val).sort_values("timestamp").reset_index(drop=True)
+    test_df = pd.concat(all_test).sort_values("timestamp").reset_index(drop=True)
+    for split_name, split_df in zip(['all_train', 'all_val', 'all_test'], [train_df, val_df, test_df]):
+        split_dir = os.path.join(output_folder, split_name)
+        os.makedirs(split_dir, exist_ok=True)
+        split_img_dir = os.path.join(split_dir, 'recorded_images')
+        os.makedirs(split_img_dir, exist_ok=True)
+        for i, row in split_df.iterrows():
+            src_img = os.path.join(img_folder, row['img_path'])
+            dst_img = os.path.join(split_img_dir, f"{i:05d}.png")
+            shutil.copy(src_img, dst_img)
+            split_df.at[i, 'img_path'] = f"{i:05d}.png"
+        split_df.to_csv(os.path.join(split_dir, "log.csv"), index=False)
+
+try:
+    pass  # This 'try' is needed so 'finally' is valid below
 finally:
     if SAVE_IMG and len(data_log) > 0:
         save_csv_log()
         print(f"[INFO] 已儲存 {len(data_log)} 筆模仿學習資料至：{folder_path}/log.csv")
 
-        # 新增切分功能
-        def split_kfold_dataset(csv_path, img_folder, output_folder,
-                        n_splits=8, val_ratio=0.1, test_ratio=0.1, random_state=42):
-            df = pd.read_csv(csv_path)
-            kf = KFold(n_splits=n_splits, shuffle=True, random_state=random_state)
-            fold = 1
-            for trainval_idx, test_idx in kf.split(df):
-                trainval_df = df.iloc[trainval_idx].reset_index(drop=True)
-                test_df = df.iloc[test_idx].reset_index(drop=True)
-                val_size = val_ratio / (1 - test_ratio)
-                train_df, val_df = train_test_split(
-                    trainval_df, test_size=val_size, random_state=random_state, shuffle=True
-                )
-
-                fold_dir = os.path.join(output_folder, f"fold_{fold}")
-                for split_name, split_df in zip(['train', 'val', 'test'], [train_df, val_df, test_df]):
-                    split_img_dir = os.path.join(fold_dir, split_name, "images")
-                    os.makedirs(split_img_dir, exist_ok=True)
-                    new_log = []
-                    for idx, row in enumerate(split_df.itertuples()):
-                        new_img_name = f"{idx:05d}.png"
-                        src = os.path.join(img_folder, getattr(row, "img_path"))
-                        dst = os.path.join(split_img_dir, new_img_name)
-                        shutil.copy(src, dst)
-                        entry = row._asdict()
-                        entry["img_path"] = new_img_name
-                        # row.Index 會被加進 _asdict，要移除
-                        if "Index" in entry:
-                            del entry["Index"]
-                        new_log.append(entry)
-                    pd.DataFrame(new_log).to_csv(os.path.join(fold_dir, split_name, "log.csv"), index=False)
-                print(f"[INFO] Fold {fold} 已切分完成")
-                fold += 1
-
-        # 執行切分
-        split_kfold_dataset(
-        csv_path=os.path.join(folder_path, "log.csv"),
-        img_folder=os.path.join(folder_path, "recorded_images"),
-        output_folder=folder_path,
-        n_splits=8,
-        val_ratio=0.1,
-        test_ratio=0.1
+        # 執行切分與合併
+        split_kfold_and_merge(
+            csv_path=os.path.join(folder_path, "log.csv"),
+            img_folder=os.path.join(folder_path, "recorded_images"),
+            output_folder=folder_path,
+            n_splits=8,
+            train_ratio=0.7,
+            val_ratio=0.15,
+            test_ratio=0.15
         )
-        print("[INFO] 已將資料切分為 8 fold，每 fold 含 train/val/test 三組資料集")
-
-        def merge_folds_to_one(output_folder, n_folds=8):
-            for split_name in ['train', 'val', 'test']:
-                merged_img_dir = os.path.join(output_folder, f"all_{split_name}", "images")
-                os.makedirs(merged_img_dir, exist_ok=True)
-                merged_log = []
-                img_counter = 0
-                for fold in range(1, n_folds+1):
-                    fold_dir = os.path.join(output_folder, f"fold_{fold}", split_name)
-                    log_path = os.path.join(fold_dir, "log.csv")
-                    if not os.path.exists(log_path):
-                        continue
-                    df = pd.read_csv(log_path)
-                    # 保持 log.csv 原順序
-                    for idx, row in df.iterrows():
-                        new_img_name = f"{img_counter:05d}.png"
-                        src = os.path.join(fold_dir, "images", row["img_path"])
-                        dst = os.path.join(merged_img_dir, new_img_name)
-                        shutil.copy(src, dst)
-                        entry = row.to_dict()
-                        entry["img_path"] = new_img_name
-                        merged_log.append(entry)
-                        img_counter += 1
-                pd.DataFrame(merged_log).to_csv(os.path.join(output_folder, f"all_{split_name}", "log.csv"), index=False)
-                print(f"[INFO] all_{split_name} 合併完成，共 {img_counter} 張圖片")
-
-        # 執行合併
-        merge_folds_to_one(folder_path, n_folds=8)
-        print("[INFO] 已將所有 fold 合併為 all_train、all_val、all_test")
+        print("[INFO] 已將資料切成8份並合併為 all_train/val/test，依時間排序並重新命名")
 
     cv2.destroyAllWindows()

@@ -50,8 +50,8 @@ def get_lane_offset_by_opencv(img, width):
             x_mid = (x1 + x2) / 2
             left_xs.append(x_mid)
             cv2.line(img, (x1, y1 + img.shape[0] - roi_margin), (x2, y2 + img.shape[0] - roi_margin), (0, 255, 0), 2)
-
     right_xs = []
+
     if right_lines is not None:
         for line in right_lines:
             x1, y1, x2, y2 = line[0]
@@ -59,7 +59,7 @@ def get_lane_offset_by_opencv(img, width):
             right_xs.append(x_mid)
             cv2.line(img, (x1 + width//2, y1 + img.shape[0] - roi_margin),
                      (x2 + width//2, y2 + img.shape[0] - roi_margin), (255, 0, 0), 2)
-
+            
     # Step 6: 計算車道中心
     if left_xs and right_xs:
         lane_center = (np.mean(left_xs) + np.mean(right_xs)) / 2
@@ -83,8 +83,8 @@ def log_data(pic_num, img, side_value, wheel_value, lwheel_value, rwheel_value, 
         "img_path": img_name,
         "steering": side_value,
         "throttle": wheel_value,
-        "lwheel": lwheel_value,
-        "rwheel": rwheel_value,
+        "lwheel": actual_lwheel_value ,
+        "rwheel": actual_rwheel_value,
         "speed_signed": speed_signed,
         "lane_offset": lane_offset,
         "timestamp": datetime.datetime.now().isoformat()
@@ -112,7 +112,7 @@ physicsClient = p.connect(p.GUI)
 p.setAdditionalSearchPath(pybullet_data.getDataPath())
 p.loadURDF("plane.urdf")
 gazebo_world_parser.parseWorld(p, filepath="worlds/new.world")
-p.loadURDF(r"0702/full_track.urdf", basePosition=[0,0,0.1])
+p.loadURDF(r"0702/full_track copy.urdf", basePosition=[0,0,0.1])
 p.setGravity(0, 0, -9.8)
 p.setRealTimeSimulation(1)
 create_zebra_crossing(start_pos=[5, 13.8, 0.0965], num_lines=9, spacing=0.3125)
