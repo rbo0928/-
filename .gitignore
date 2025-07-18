@@ -13,9 +13,14 @@ evaluate
 2025_07_03/
 2025_07_04/
 2025_07_09/
+2025_07_08/
 2025_07_10/
 2025_07_11/
 2025_07_14/
 2025_07_16/
-human.urdf
+2025_07_17/
+2025_07_18/
+best_transformer_driver_model.pth
+cnn_lstm_driver_model.pth
 test.py
+transformer_driver_model.pth
