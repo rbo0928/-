@@ -8,10 +8,23 @@ import pandas as pd
 import os
 import math
 import time
+import torchvision.transforms.functional as TF
+from tqdm import tqdm # [NEW] 匯入 tqdm
+
 
 # --- 模組 1: 影像編碼器 (Vision Transformer 風格) ---
 # 根據報告，我們需要一個能處理 640x200 影像的編碼器。
 # 我們將實作一個簡化版的 ViT。
+# 圖片裁切參數
+CROP_TOP_PIXELS = 280
+ORIGINAL_HEIGHT = 480
+ORIGINAL_WIDTH = 640
+
+class CustomTopCrop:
+    def __init__(self, top_pixels):
+        self.top_pixels = top_pixels
+    def __call__(self, img):
+        return TF.crop(img, self.top_pixels, 0, ORIGINAL_HEIGHT - self.top_pixels, ORIGINAL_WIDTH)
 
 class PatchEmbedding(nn.Module):
     """
@@ -196,8 +209,7 @@ class DrivingDataset(Dataset):
         speed_sequence = []
         
         for _, row in sequence_df.iterrows():
-            pic_path = os.path.join(self.root_dir, "recorded_images")
-            img_name = os.path.join(pic_path, row['img_path'])
+            img_name = os.path.join(self.root_dir, row['img_path'])
             image = Image.open(img_name).convert("RGB")
             
             if self.transform:
@@ -221,47 +233,56 @@ class DrivingDataset(Dataset):
 if __name__ == '__main__':
     # --- 超參數設定 ---
     DATA_ROOT = "./2025_07_09/4/"
+    IMG_DIR = os.path.join(DATA_ROOT, 'recorded_images')
     TRAIN_CSV = os.path.join(DATA_ROOT, "train_data.csv")
     VAL_CSV = os.path.join(DATA_ROOT, "val_data.csv")
+    TEST_CSV = os.path.join(DATA_ROOT, "test_data.csv") # [NEW] 測試集路徑
+    SAVE_PATH = "./" # 模型儲存路徑
     
-    # 模型參數
+    # 模型參數 (針對 8GB VRAM 的建議 - 提升版)
     SEQ_LENGTH = 20
     IMG_H, IMG_W = 200, 640
-    # 為了快速測試，使用較小的 embed_dim。若要追求性能，可設為 768
-    EMBED_DIM = 256
-    DEPTH = 4 # ViT 深度
-    NUM_HEADS = 4 # ViT 注意力頭
-    TEMPORAL_DEPTH = 3 # 時序 Transformer 深度
-    TEMPORAL_HEADS = 4 # 時序 Transformer 注意力頭
+    EMBED_DIM = 512      # 提升嵌入維度
+    DEPTH = 6            # 影像編碼器深度 (維持不變)
+    NUM_HEADS = 8        # 提升影像編碼器注意力頭 (需為 EMBED_DIM 的因數)
+    TEMPORAL_DEPTH = 4   # 時序 Transformer 深度 (維持不變)
+    TEMPORAL_HEADS = 8   # 提升時序 Transformer 注意力頭 (需為 EMBED_DIM 的因數)
 
     # 訓練參數
     NUM_EPOCHS = 10
-    BATCH_SIZE = 8 # 根據你的 GPU VRAM 調整
+    BATCH_SIZE = 4 # 為適應更大的模型，稍微降低 Batch Size
     LEARNING_RATE = 1e-4
     
     # --- 資料轉換 ---
     # 定義影像的轉換流程
     data_transforms = transforms.Compose([
-        transforms.Resize((IMG_H, IMG_W)),
+        CustomTopCrop(CROP_TOP_PIXELS),
+        transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.3),
+        transforms.RandomAffine(degrees=7, translate=(0.07, 0)),
         transforms.ToTensor(),
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
     ])
 
     # --- 建立資料集與資料加載器 ---
     print("正在加載資料...")
-    # 檢查檔案是否存在，若不存在則跳過，避免報錯
-    if not os.path.exists(TRAIN_CSV) or not os.path.exists(VAL_CSV):
-        print("錯誤: 找不到 train_data.csv 或 val_data.csv。")
-        print("請確認 './2025_07_09/4/' 路徑下有正確的資料檔案。")
-        print("將跳過訓練過程。")
+    # 檢查檔案是否存在
+    if not all(os.path.exists(p) for p in [TRAIN_CSV, VAL_CSV, TEST_CSV]):
+        print("錯誤: 找不到 train_data.csv, val_data.csv 或 test_data.csv。")
+        print(f"請確認 '{DATA_ROOT}' 路徑下有正確的資料檔案。")
+        print("將跳過執行過程。")
         exit()
+    
+    os.makedirs(SAVE_PATH, exist_ok=True) # 確保儲存路徑存在
 
-    train_dataset = DrivingDataset(csv_path=TRAIN_CSV, root_dir=DATA_ROOT, seq_len=SEQ_LENGTH, transform=data_transforms)
-    val_dataset = DrivingDataset(csv_path=VAL_CSV, root_dir=DATA_ROOT, seq_len=SEQ_LENGTH, transform=data_transforms)
+    train_dataset = DrivingDataset(csv_path=TRAIN_CSV, root_dir=IMG_DIR, seq_len=SEQ_LENGTH, transform=data_transforms)
+    val_dataset = DrivingDataset(csv_path=VAL_CSV, root_dir=IMG_DIR, seq_len=SEQ_LENGTH, transform=data_transforms)
+    test_dataset = DrivingDataset(csv_path=TEST_CSV, root_dir=IMG_DIR, seq_len=SEQ_LENGTH, transform=data_transforms) # [NEW] 建立測試集
 
     train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=2, pin_memory=True)
     val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=2, pin_memory=True)
-    print(f"訓練資料集大小: {len(train_dataset)} | 驗證資料集大小: {len(val_dataset)}")
+    test_loader = DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=2, pin_memory=True) # [NEW] 建立測試資料加載器
+    
+    print(f"訓練資料集大小: {len(train_dataset)} | 驗證資料集大小: {len(val_dataset)} | 測試資料集大小: {len(test_dataset)}")
 
     # --- 初始化模型、損失函數、優化器 ---
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -277,24 +298,24 @@ if __name__ == '__main__':
 
     criterion = nn.MSELoss()
     optimizer = torch.optim.AdamW(model.parameters(), lr=LEARNING_RATE)
-    # [FIXED] 更新為新的 torch.amp API
     scaler = torch.amp.GradScaler(enabled=torch.cuda.is_available())
 
     # --- 訓練與驗證迴圈 ---
+    best_val_loss = float('inf') # 初始化最佳驗證損失
+
     for epoch in range(NUM_EPOCHS):
         # --- 訓練 ---
         model.train()
         train_loss = 0.0
-        start_time = time.time()
-        
-        for i, (images, speeds, targets) in enumerate(train_loader):
+        # [NEW] 加入 tqdm 進度條
+        train_progress_bar = tqdm(train_loader, desc=f"Epoch {epoch+1}/{NUM_EPOCHS} [訓練]", leave=False)
+        for images, speeds, targets in train_progress_bar:
             images = images.to(device)
             speeds = speeds.to(device)
             targets = targets.to(device)
             
             optimizer.zero_grad()
             
-            # [FIXED] 更新為新的 torch.amp API
             with torch.amp.autocast(device_type='cuda', enabled=torch.cuda.is_available()):
                 predictions = model(images, speeds)
                 loss = criterion(predictions, targets)
@@ -304,37 +325,68 @@ if __name__ == '__main__':
             scaler.update()
             
             train_loss += loss.item()
-            
-            if (i + 1) % 50 == 0:
-                print(f"Epoch [{epoch+1}/{NUM_EPOCHS}], Step [{i+1}/{len(train_loader)}], Loss: {loss.item():.4f}")
+            train_progress_bar.set_postfix(loss=loss.item())
 
         avg_train_loss = train_loss / len(train_loader)
         
         # --- 驗證 ---
         model.eval()
         val_loss = 0.0
+        # [NEW] 加入 tqdm 進度條
+        val_progress_bar = tqdm(val_loader, desc=f"Epoch {epoch+1}/{NUM_EPOCHS} [驗證]", leave=False)
         with torch.no_grad():
-            for images, speeds, targets in val_loader:
+            for images, speeds, targets in val_progress_bar:
                 images = images.to(device)
                 speeds = speeds.to(device)
                 targets = targets.to(device)
                 
-                # [FIXED] 更新為新的 torch.amp API 並修正模型輸入
                 with torch.amp.autocast(device_type='cuda', enabled=torch.cuda.is_available()):
-                    # [FIXED] 傳入正確的 images 和 speeds
                     predictions = model(images, speeds)
                     loss = criterion(predictions, targets)
                 
                 val_loss += loss.item()
         
         avg_val_loss = val_loss / len(val_loader)
-        epoch_time = time.time() - start_time
         
-        print("-" * 50)
-        print(f"Epoch {epoch+1}/{NUM_EPOCHS} | "
+        print(f"\nEpoch {epoch+1}/{NUM_EPOCHS} | "
               f"訓練損失: {avg_train_loss:.4f} | "
-              f"驗證損失: {avg_val_loss:.4f} | "
-              f"耗時: {epoch_time:.2f}s")
-        print("-" * 50)
+              f"驗證損失: {avg_val_loss:.4f}")
+        
+        if avg_val_loss < best_val_loss:
+            best_val_loss = avg_val_loss
+            model_save_path = os.path.join(SAVE_PATH, 'best_model.pth')
+            torch.save(model.state_dict(), model_save_path)
+            print(f"找到新的最佳模型，驗證損失為 {best_val_loss:.4f}，已儲存至 {model_save_path}")
 
-    print("訓練完成！")
+    print("\n訓練完成！")
+
+    # --- [NEW] 測試最佳模型 ---
+    print("\n--- 開始測試最佳模型 ---")
+    # 載入最佳模型權重
+    best_model_path = os.path.join(SAVE_PATH, 'best_model.pth')
+    if os.path.exists(best_model_path):
+        model.load_state_dict(torch.load(best_model_path))
+        print(f"已成功載入模型: {best_model_path}")
+    else:
+        print("錯誤: 找不到最佳模型檔案 'best_model.pth'，將使用最終模型進行測試。")
+
+    model.eval()
+    test_loss = 0.0
+    test_progress_bar = tqdm(test_loader, desc="[測試]", leave=True)
+    with torch.no_grad():
+        for images, speeds, targets in test_progress_bar:
+            images = images.to(device)
+            speeds = speeds.to(device)
+            targets = targets.to(device)
+            
+            with torch.amp.autocast(device_type='cuda', enabled=torch.cuda.is_available()):
+                predictions = model(images, speeds)
+                loss = criterion(predictions, targets)
+            
+            test_loss += loss.item()
+
+    avg_test_loss = test_loss / len(test_loader)
+    print("-" * 50)
+    print(f"最終測試損失 (MSE): {avg_test_loss:.4f}")
+    print("-" * 50)
+
