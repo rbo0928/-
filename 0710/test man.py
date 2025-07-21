@@ -26,7 +26,7 @@ def get_lane_offset_by_opencv(img, width):
     masked = cv2.bitwise_and(img, img, mask=white_mask)
     gray = cv2.cvtColor(masked, cv2.COLOR_BGR2GRAY)
     
-   # # Step 2: Canny 邊緣
+    # Step 2: Canny 邊緣
     blur = cv2.GaussianBlur(gray, (5, 5), 0)
     edges = cv2.Canny(blur, 50, 150)
 
