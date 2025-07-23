@@ -17,7 +17,7 @@ import random
 import torchvision.transforms.functional as TF
 
 # --- 參數設定 ---
-DATA_DIR = '2025_07_18/'
+DATA_DIR = '2025_07_16/'
 TRAIN_DIR = os.path.join(DATA_DIR, '1')
 VAL_DIR = os.path.join(DATA_DIR, '3')
 TEST_DIR = os.path.join(DATA_DIR, '2')
@@ -28,8 +28,6 @@ BEST_MODEL_SAVE_PATH = 'best_transformer_driver_model.pth'
 
 # 預覽開關
 SHOW_PREVIEW = True
-#重複訓練開關
-RETRAIN = True
 
 # 模型與訓練參數
 SEQUENCE_LENGTH = 20
@@ -246,9 +244,6 @@ if __name__ == '__main__':
         print(f"使用 {num_workers} 個子程序進行資料載入。")
 
         model = VisionTransformerDriver(D_MODEL, N_HEAD, N_LAYERS, DROPOUT).to(device)
-        if os.path.exists(BEST_MODEL_SAVE_PATH) and RETRAIN:
-            print("使用之前的模型開始訓練")
-            model.load_state_dict(torch.load(BEST_MODEL_SAVE_PATH))
         criterion = nn.MSELoss()
         # 【修改點】在優化器中加入 weight_decay
         optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE, weight_decay=1e-4)
