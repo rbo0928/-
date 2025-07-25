@@ -144,7 +144,7 @@ p.setRealTimeSimulation(1)
 # 人
 humanoidStartPos = [5, 13.3, 0.09]
 humanoidStartOrientation = p.getQuaternionFromEuler([0, 0, np.pi/2])
-humanoid = p.loadURDF('man.urdf', humanoidStartPos, humanoidStartOrientation)
+humanoid = p.loadURDF('0710/man.urdf', humanoidStartPos, humanoidStartOrientation)
 cid = p.createConstraint(humanoid, -1, -1, -1, p.JOINT_POINT2POINT, [0, 0, 0], [0, 0, 0], [humanoidStartPos[0], humanoidStartPos[1], 0.5])
 p.changeConstraint(cid, maxForce=50)
 current_yaw = np.pi/2
