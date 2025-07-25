@@ -17,7 +17,7 @@ import random
 import torchvision.transforms.functional as TF
 
 # --- 參數設定 ---
-DATA_DIR = '2025_07_16/'
+DATA_DIR = '2025_07_21/'
 TRAIN_DIR = os.path.join(DATA_DIR, '1')
 VAL_DIR = os.path.join(DATA_DIR, '3')
 TEST_DIR = os.path.join(DATA_DIR, '2')
@@ -27,26 +27,27 @@ TEST_CSV_PATH = os.path.join(TEST_DIR, 'log.csv')
 BEST_MODEL_SAVE_PATH = 'best_transformer_driver_model.pth'
 
 # 預覽開關
-SHOW_PREVIEW = True
+SHOW_PREVIEW = False
 
 # 模型與訓練參數
 SEQUENCE_LENGTH = 20
-BATCH_SIZE = 8
 EPOCHS = 40
-LEARNING_RATE = 1e-4
 IMG_HEIGHT = 224
 IMG_WIDTH = 224
 
 # 圖片裁切參數
-CROP_TOP_PIXELS = 280
+CROP_TOP_PIXELS = 240
 ORIGINAL_HEIGHT = 480
 ORIGINAL_WIDTH = 640
 
-# Transformer 模型參數
-D_MODEL = 512
-N_HEAD = 8
-N_LAYERS = 3
-DROPOUT = 0.4
+# 【修改點】更複雜的 Transformer 模型參數
+D_MODEL = 768      # 增加特徵維度 (512 -> 768)
+N_HEAD = 12        # 增加注意力頭數 (8 -> 12)，注意 D_MODEL 必須能被 N_HEAD 整除
+N_LAYERS = 6       # 增加 Transformer 層數 (3 -> 6)
+DROPOUT = 0.5      # Dropout 可以視情況調整，若過擬合嚴重可考慮增加到 0.5
+
+LEARNING_RATE = 1e-5
+BATCH_SIZE = 2
 
 # --- 1. 自定義資料集與轉換 ---
 class CustomTopCrop:
@@ -120,29 +121,83 @@ class PositionalEncoding(nn.Module):
         x = x + self.pe[:x.size(0), :]
         return self.dropout(x)
 
-class VisionTransformerDriver(nn.Module):
+# 【修改點】升級後的 VisionTransformerDriver
+class ComplexVisionTransformerDriver(nn.Module):
     def __init__(self, d_model, nhead, num_encoder_layers, dropout, num_classes=2):
-        super(VisionTransformerDriver, self).__init__()
-        resnet = models.resnet18(weights=models.ResNet18_Weights.DEFAULT)
-        self.cnn = nn.Sequential(*list(resnet.children())[:-1])
-        self.pos_encoder = PositionalEncoding(d_model, dropout)
-        encoder_layers = nn.TransformerEncoderLayer(d_model, nhead, dropout=dropout, batch_first=True)
-        self.transformer_encoder = nn.TransformerEncoder(encoder_layers, num_encoder_layers)
-        self.cls_token = nn.Parameter(torch.zeros(1, 1, d_model))
-        self.output_fc = nn.Linear(d_model, num_classes)
+        super(ComplexVisionTransformerDriver, self).__init__()
         self.d_model = d_model
+
+        # 1. 使用更強大的 ResNet50 作為 CNN 骨幹
+        #    並使用預訓練權重
+        resnet = models.resnet50(weights=models.ResNet50_Weights.DEFAULT)
+        #    移除 ResNet 最後的全連接層 (fc)
+        self.cnn = nn.Sequential(*list(resnet.children())[:-1])
+        
+        # 2. 新增一個線性層，將 ResNet50 的輸出 (2048 維) 投影到 Transformer 需要的維度 (d_model)
+        #    ResNet50 最後一個卷積層輸出的 channel 數是 2048
+        self.feature_projection = nn.Linear(resnet.fc.in_features, d_model)
+
+        # 3. 位置編碼器 (Positional Encoding)
+        self.pos_encoder = PositionalEncoding(d_model, dropout)
+        
+        # 4. Transformer 編碼器層
+        encoder_layers = nn.TransformerEncoderLayer(d_model, nhead, dim_feedforward=d_model*4, dropout=dropout, batch_first=True)
+        self.transformer_encoder = nn.TransformerEncoder(encoder_layers, num_encoder_layers)
+        
+        # 5. 可學習的 [CLS] Token
+        self.cls_token = nn.Parameter(torch.zeros(1, 1, d_model))
+
+        # 6. 升級輸出頭 (Output Head) 為一個小型 MLP
+        self.output_mlp = nn.Sequential(
+            nn.Linear(d_model, d_model // 2),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(d_model // 2, num_classes)
+        )
+
     def forward(self, x):
+        # 輸入維度: (batch_size, seq_len, C, H, W)
         batch_size, seq_len, c, h, w = x.shape
+        
+        # 將 batch 和 sequence 維度合併，以利 CNN 處理
         x = x.view(batch_size * seq_len, c, h, w)
-        features = self.cnn(x).view(batch_size, seq_len, self.d_model)
+        
+        # --- CNN 特徵提取 ---
+        # features 維度: (batch_size * seq_len, 2048, 1, 1)
+        features = self.cnn(x)
+        # features 維度: (batch_size * seq_len, 2048)
+        features = features.view(features.size(0), -1)
+        
+        # --- 特徵投影 ---
+        # projected_features 維度: (batch_size * seq_len, d_model)
+        projected_features = self.feature_projection(features)
+        
+        # 將維度還原為 (batch_size, seq_len, d_model)
+        projected_features = projected_features.view(batch_size, seq_len, self.d_model)
+        
+        # --- Transformer 處理 ---
+        # 準備 [CLS] token
         cls_tokens = self.cls_token.expand(batch_size, -1, -1)
-        x = torch.cat((cls_tokens, features), dim=1)
-        x = x.transpose(0, 1)
-        x = self.pos_encoder(x)
-        x = x.transpose(0, 1)
+        
+        # 將 [CLS] token 加在序列的最前面
+        # x 維度: (batch_size, seq_len + 1, d_model)
+        x = torch.cat((cls_tokens, projected_features), dim=1)
+        
+        # 因為我們在 TransformerEncoderLayer 設定了 batch_first=True, 所以不需要再轉換維度
+        # x = x.transpose(0, 1)  <-- 這行不再需要
+        # x = self.pos_encoder(x)
+        # x = x.transpose(0, 1)  <-- 這行不再需要
+
+        # 直接傳入 Transformer Encoder
         transformer_output = self.transformer_encoder(x)
+        
+        # 取出 [CLS] token 對應的輸出
+        # cls_output 維度: (batch_size, d_model)
         cls_output = transformer_output[:, 0, :]
-        out = self.output_fc(cls_output)
+        
+        # --- MLP 輸出頭 ---
+        out = self.output_mlp(cls_output)
+        
         return out
 
 # --- 預覽與訓練函式 ---
@@ -219,6 +274,9 @@ if __name__ == '__main__':
             CustomTopCrop(CROP_TOP_PIXELS),
             transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.3),
             transforms.RandomAffine(degrees=7, translate=(0.07, 0)),
+            transforms.RandomPerspective(distortion_scale=0.2, p=0.5),
+            transforms.GaussianBlur(kernel_size=(5, 9), sigma=(0.1, 5)),
+            
             transforms.Resize((IMG_HEIGHT, IMG_WIDTH)),
             transforms.ToTensor(),
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
@@ -235,7 +293,7 @@ if __name__ == '__main__':
         val_dataset = DrivingDataset(VAL_CSV_PATH, os.path.join(VAL_DIR, 'recorded_images'), SEQUENCE_LENGTH, transform=val_test_transform, is_training=False)
         test_dataset = DrivingDataset(TEST_CSV_PATH, os.path.join(TEST_DIR, 'recorded_images'), SEQUENCE_LENGTH, transform=val_test_transform, is_training=False)
 
-        num_workers = 4
+        num_workers = 10
         train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=num_workers, pin_memory=True)
         val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=num_workers, pin_memory=True)
         test_loader = DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=num_workers, pin_memory=True)
@@ -243,15 +301,15 @@ if __name__ == '__main__':
         print(f"資料載入完成 -> 訓練集: {len(train_dataset)} | 驗證集: {len(val_dataset)} | 測試集: {len(test_dataset)}")
         print(f"使用 {num_workers} 個子程序進行資料載入。")
 
-        model = VisionTransformerDriver(D_MODEL, N_HEAD, N_LAYERS, DROPOUT).to(device)
-        criterion = nn.MSELoss()
+        model = ComplexVisionTransformerDriver(D_MODEL, N_HEAD, N_LAYERS, DROPOUT).to(device)
+        criterion = nn.SmoothL1Loss()
         # 【修改點】在優化器中加入 weight_decay
-        optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE, weight_decay=1e-4)
+        optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE, weight_decay=5e-3) 
         # 【修改點】定義學習率排程器 (移除 verbose 參數)
-        scheduler = ReduceLROnPlateau(optimizer, 'min', factor=0.5, patience=2)
+        scheduler = ReduceLROnPlateau(optimizer, 'min', factor=0.5, patience=3)
 
         # 早停法變數初始化
-        patience = 5 # 稍微增加早停的耐心，因為排程器會幫助模型跳出局部最優
+        patience = 10 # 稍微增加早停的耐心，因為排程器會幫助模型跳出局部最優
         epochs_no_improve = 0
         best_val_loss = float('inf')
 
