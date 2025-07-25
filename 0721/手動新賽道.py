@@ -3,12 +3,10 @@ from pybullet_utils import gazebo_world_parser
 import pybullet_data
 import cv2
 import time
-import random
 import numpy as np
 import datetime, os
 import pandas as pd
 from sklearn.model_selection import train_test_split
-import shutil
 
 data_log = []
 SAVE_IMG = True
@@ -138,7 +136,7 @@ def setup_recording_folders():
 physicsClient = p.connect(p.GUI)
 p.setAdditionalSearchPath(pybullet_data.getDataPath())
 p.loadURDF("plane.urdf")
-p.loadURDF(r"D:\Code\test.urdf", basePosition=[0,0,0.1])
+p.loadURDF(r"0710/test.urdf", basePosition=[0,0,0.1])
 p.setGravity(0, 0, -9.8)
 p.setRealTimeSimulation(1)
 #create_zebra_crossing(start_pos=[5, 13.8, 0.0965], num_lines=9, spacing=0.3125)

@@ -232,7 +232,7 @@ class DrivingDataset(Dataset):
 # --- 訓練主程式 ---
 if __name__ == '__main__':
     # --- 超參數設定 ---
-    DATA_ROOT = "./2025_07_09/4/"
+    DATA_ROOT = "./2025_07_14/1/"
     IMG_DIR = os.path.join(DATA_ROOT, 'recorded_images')
     TRAIN_CSV = os.path.join(DATA_ROOT, "train_data.csv")
     VAL_CSV = os.path.join(DATA_ROOT, "val_data.csv")

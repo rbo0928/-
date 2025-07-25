@@ -214,7 +214,7 @@ p.setAdditionalSearchPath(pybullet_data.getDataPath())
 #gazebo_world_parser.parseWorld(p, filepath="worlds/new.world")
 #p.loadURDF(r"D:\Code\full_track_nowall.urdf", basePosition=[0,0,0.1])
 p.loadURDF("plane.urdf")
-p.loadURDF(r"D:\Code\test.urdf", basePosition=[0,0,0.1])
+p.loadURDF(r"0710/test.urdf", basePosition=[0,0,0.1])
 p.setGravity(0, 0, -9.8)
 p.setRealTimeSimulation(1)
 #create_zebra_crossing(start_pos=[5, 13.8, 0.0965], num_lines=9, spacing=0.3125)
@@ -222,7 +222,7 @@ p.setRealTimeSimulation(1)
 # Humanoid
 humanoidStartPos = [5, 13.3, 0.09]
 humanoidStartOrientation = p.getQuaternionFromEuler([0, 0, np.pi/2])
-humanoid = p.loadURDF('man.urdf', humanoidStartPos, humanoidStartOrientation)
+humanoid = p.loadURDF('0710/man.urdf', humanoidStartPos, humanoidStartOrientation)
 cid = p.createConstraint(humanoid, -1, -1, -1, p.JOINT_POINT2POINT, [0, 0, 0], [0, 0, 0], [humanoidStartPos[0], humanoidStartPos[1], 0.5])
 p.changeConstraint(cid, maxForce=50)
 current_yaw = np.pi/2
@@ -290,6 +290,7 @@ autodrive_enabled = False
 recording = False
 try:
     while True:
+        keys = p.getKeyboardEvents()
         forward_speed = p.readUserDebugParameter(speed_slider)
         # <<< 修正 >>> 使用 "移除再新增" 的方法來重設拉桿數值
         if ord('z') in keys and keys[ord('z')] & p.KEY_WAS_TRIGGERED:
@@ -299,7 +300,6 @@ try:
             speed_slider = p.addUserDebugParameter('speed', -50, 50, 20)
             print("[INFO] 速度已重設為 20")
 
-        keys = p.getKeyboardEvents()
         if ord('r') in keys and keys[ord('r')] & p.KEY_WAS_TRIGGERED:
             recording = not recording
             print(f"[INFO] 模仿學習資料記錄 {'啟動' if recording else '暫停'}")

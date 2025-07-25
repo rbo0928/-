@@ -17,7 +17,7 @@ import random
 import torchvision.transforms.functional as TF
 
 # --- 參數設定 ---
-DATA_DIR = '2025_07_16/'
+DATA_DIR = '2025_07_18/'
 TRAIN_DIR = os.path.join(DATA_DIR, '1')
 VAL_DIR = os.path.join(DATA_DIR, '3')
 TEST_DIR = os.path.join(DATA_DIR, '2')
