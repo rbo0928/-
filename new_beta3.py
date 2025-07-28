@@ -21,17 +21,17 @@ from PIL import Image
 from collections import deque # 用於高效地處理影像序列
 
 # --- 1. AI 模型參數 (必須與訓練時完全一致) ---
-MODEL_PATH = 'best_transformer_driver_model3ㄋ.pth' # 指定訓練好的模型檔案
-SEQUENCE_LENGTH = 15
+MODEL_PATH = 'best_transformer_driver_model.pth' # 指定訓練好的模型檔案
+SEQUENCE_LENGTH = 20
 IMG_HEIGHT = 224
 IMG_WIDTH = 224
-D_MODEL = 512  # ResNet-18 的輸出維度
-N_HEAD = 8
-N_LAYERS = 3
-DROPOUT = 0.3
+D_MODEL = 768      # 增加特徵維度 (512 -> 768)
+N_HEAD = 12        # 增加注意力頭數 (8 -> 12)，注意 D_MODEL 必須能被 N_HEAD 整除
+N_LAYERS = 6       # 增加 Transformer 層數 (3 -> 6)
+DROPOUT = 0.5 
 
 # 圖片裁切參數 (裁掉圖片頂部包含文字的部分)
-CROP_TOP_PIXELS = 280
+CROP_TOP_PIXELS = 240
 ORIGINAL_HEIGHT = 480
 ORIGINAL_WIDTH = 640
 
@@ -54,44 +54,95 @@ class PositionalEncoding(nn.Module):
         pe[:, 1::2] = torch.cos(position * div_term)
         pe = pe.unsqueeze(0).transpose(0, 1)
         self.register_buffer('pe', pe)
-
     def forward(self, x):
         x = x + self.pe[:x.size(0), :]
         return self.dropout(x)
-
-class VisionTransformerDriver(nn.Module):
+    
+class ComplexVisionTransformerDriver(nn.Module):
     def __init__(self, d_model, nhead, num_encoder_layers, dropout, num_classes=2):
-        super(VisionTransformerDriver, self).__init__()
-        resnet = models.resnet18(weights=models.ResNet18_Weights.DEFAULT)
-        self.cnn = nn.Sequential(*list(resnet.children())[:-1])
-        self.pos_encoder = PositionalEncoding(d_model, dropout)
-        encoder_layers = nn.TransformerEncoderLayer(d_model, nhead, dropout=dropout, batch_first=True)
-        self.transformer_encoder = nn.TransformerEncoder(encoder_layers, num_encoder_layers)
-        self.cls_token = nn.Parameter(torch.zeros(1, 1, d_model))
-        self.output_fc = nn.Linear(d_model, num_classes)
+        super(ComplexVisionTransformerDriver, self).__init__()
         self.d_model = d_model
 
+        # 1. 使用更強大的 ResNet50 作為 CNN 骨幹
+        #    並使用預訓練權重
+        resnet = models.resnet50(weights=models.ResNet50_Weights.DEFAULT)
+        #    移除 ResNet 最後的全連接層 (fc)
+        self.cnn = nn.Sequential(*list(resnet.children())[:-1])
+        
+        # 2. 新增一個線性層，將 ResNet50 的輸出 (2048 維) 投影到 Transformer 需要的維度 (d_model)
+        #    ResNet50 最後一個卷積層輸出的 channel 數是 2048
+        self.feature_projection = nn.Linear(resnet.fc.in_features, d_model)
+
+        # 3. 位置編碼器 (Positional Encoding)
+        self.pos_encoder = PositionalEncoding(d_model, dropout)
+        
+        # 4. Transformer 編碼器層
+        encoder_layers = nn.TransformerEncoderLayer(d_model, nhead, dim_feedforward=d_model*4, dropout=dropout, batch_first=True)
+        self.transformer_encoder = nn.TransformerEncoder(encoder_layers, num_encoder_layers)
+        
+        # 5. 可學習的 [CLS] Token
+        self.cls_token = nn.Parameter(torch.zeros(1, 1, d_model))
+
+        # 6. 升級輸出頭 (Output Head) 為一個小型 MLP
+        self.output_mlp = nn.Sequential(
+            nn.Linear(d_model, d_model // 2),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(d_model // 2, num_classes)
+        )
+
     def forward(self, x):
+        # 輸入維度: (batch_size, seq_len, C, H, W)
         batch_size, seq_len, c, h, w = x.shape
+        
+        # 將 batch 和 sequence 維度合併，以利 CNN 處理
         x = x.view(batch_size * seq_len, c, h, w)
-        features = self.cnn(x).view(batch_size, seq_len, self.d_model)
+        
+        # --- CNN 特徵提取 ---
+        # features 維度: (batch_size * seq_len, 2048, 1, 1)
+        features = self.cnn(x)
+        # features 維度: (batch_size * seq_len, 2048)
+        features = features.view(features.size(0), -1)
+        
+        # --- 特徵投影 ---
+        # projected_features 維度: (batch_size * seq_len, d_model)
+        projected_features = self.feature_projection(features)
+        
+        # 將維度還原為 (batch_size, seq_len, d_model)
+        projected_features = projected_features.view(batch_size, seq_len, self.d_model)
+        
+        # --- Transformer 處理 ---
+        # 準備 [CLS] token
         cls_tokens = self.cls_token.expand(batch_size, -1, -1)
-        x = torch.cat((cls_tokens, features), dim=1)
-        x = x.transpose(0, 1)
-        x = self.pos_encoder(x)
-        x = x.transpose(0, 1)
+        
+        # 將 [CLS] token 加在序列的最前面
+        # x 維度: (batch_size, seq_len + 1, d_model)
+        x = torch.cat((cls_tokens, projected_features), dim=1)
+        
+        # 因為我們在 TransformerEncoderLayer 設定了 batch_first=True, 所以不需要再轉換維度
+        # x = x.transpose(0, 1)  <-- 這行不再需要
+        # x = self.pos_encoder(x)
+        # x = x.transpose(0, 1)  <-- 這行不再需要
+
+        # 直接傳入 Transformer Encoder
         transformer_output = self.transformer_encoder(x)
+        
+        # 取出 [CLS] token 對應的輸出
+        # cls_output 維度: (batch_size, d_model)
         cls_output = transformer_output[:, 0, :]
-        out = self.output_fc(cls_output)
+        
+        # --- MLP 輸出頭 ---
+        out = self.output_mlp(cls_output)
+        
         return out
 
 # --- 3. AI 模型載入與預測函式 ---
 def load_model(model_path, device):
     """載入訓練好的模型"""
     print("正在載入 AI 模型...")
-    model = VisionTransformerDriver(D_MODEL, N_HEAD, N_LAYERS, DROPOUT)
+    model = ComplexVisionTransformerDriver(D_MODEL, N_HEAD, N_LAYERS, DROPOUT)
     try:
-        model.load_state_dict(torch.load(model_path, map_location=device))
+        model.load_state_dict(torch.load(model_path))
         model.to(device)
         model.eval()
         print("AI 模型已成功載入。")
