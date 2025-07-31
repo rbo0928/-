@@ -21,7 +21,7 @@ from PIL import Image
 from collections import deque # 用於高效地處理影像序列
 
 # --- 1. AI 模型參數 (必須與訓練時完全一致) ---
-MODEL_PATH = 'best_transformer_driver_model2.pth' # 指定訓練好的模型檔案
+MODEL_PATH = 'A_mode_from_no_del.pth' # 指定訓練好的模型檔案
 SEQUENCE_LENGTH = 15
 IMG_HEIGHT = 224
 IMG_WIDTH = 224
