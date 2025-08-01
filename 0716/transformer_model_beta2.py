@@ -17,14 +17,14 @@ import random
 import torchvision.transforms.functional as TF
 
 # --- 參數設定 ---
-DATA_DIR = '2025_07_24/'
+DATA_DIR = '2025_07_18/'
 TRAIN_DIR = os.path.join(DATA_DIR, '1')
 VAL_DIR = os.path.join(DATA_DIR, '3')
 TEST_DIR = os.path.join(DATA_DIR, '2')
 TRAIN_CSV_PATH = os.path.join(TRAIN_DIR, 'log.csv')
 VAL_CSV_PATH = os.path.join(VAL_DIR, 'log.csv')
 TEST_CSV_PATH = os.path.join(TEST_DIR, 'log.csv')
-BEST_MODEL_SAVE_PATH = 'best_transformer_driver_model2.pth'
+BEST_MODEL_SAVE_PATH = 'best_transformer_driver_model.pth'
 
 # 預覽開關
 SHOW_PREVIEW = True
