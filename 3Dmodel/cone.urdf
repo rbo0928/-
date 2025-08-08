@@ -1,0 +1,27 @@
+<?xml version="1.0" ?>
+<robot name="sketchup_model">
+
+  <!-- 三角錐 -->
+  <link name="body">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="cone.dae" scale="1.25 1.25 1.25"/>
+      </geometry>
+      <material name="cone">
+        <color rgba="1 0.4 0 1"/> <!--橘色-->
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="cone.dae" scale="1.25 1.25 1.25"/>
+      </geometry>
+    </collision>
+    <inertial>
+      <mass value="0"/>
+      <inertia ixx="0" ixy="0" ixz="0" iyy="0" iyz="0" izz="0"/>
+    </inertial>
+  </link>
+
+</robot>

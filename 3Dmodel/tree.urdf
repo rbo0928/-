@@ -1,0 +1,57 @@
+<?xml version="1.0" ?>
+<robot name="sketchup_model">
+
+  <!-- 樹幹 -->
+  <link name="trunk">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="trunk.dae" scale="3 3 3"/>
+      </geometry>
+      <material name="trunk">
+        <color rgba="0.396 0.263 0.129 1"/> <!-- 樹幹棕 -->
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="trunk.dae" scale="3 3 3"/>
+      </geometry>
+    </collision>
+    <inertial>
+      <mass value="0"/>
+      <inertia ixx="0" ixy="0" ixz="0" iyy="0" iyz="0" izz="0"/>
+    </inertial>
+  </link>
+
+  <!-- 樹葉 -->
+  <link name="leaf">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="leaf.dae" scale="3 3 3"/>
+      </geometry>
+      <material name="leaf">
+        <color rgba="0.13, 0.55, 0.13, 1"/> <!-- 樹葉綠 -->
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="leaf.dae" scale="3 3 3"/>
+      </geometry>
+    </collision>
+    <inertial>
+      <mass value="0"/>
+      <inertia ixx="0" ixy="0" ixz="0" iyy="0" iyz="0" izz="0"/>
+    </inertial>
+  </link>
+
+  <!-- 固定邊框到主體 -->
+  <joint name="leaf_to_trunk" type="fixed">
+    <parent link="trunk"/>
+    <child link="leaf"/>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+  </joint>
+
+</robot>
