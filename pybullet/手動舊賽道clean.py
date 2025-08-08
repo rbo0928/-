@@ -26,7 +26,6 @@ def information():
     print('按z重設車子速度','按r切換錄影模式','按a切換自動駕駛')
     print('按t在終端輸入座標傳送到指定位置')
     print('退出前記得按r結束錄影，在按esc退出，不然會沒有log'+'\n')
-
 # ---------------------------
 # Lane offset (via OpenCV)
 # ---------------------------
@@ -192,14 +191,14 @@ def setup_recording_folders():
 # ---------------------------
 physicsClient = p.connect(p.GUI)
 p.setAdditionalSearchPath(pybullet_data.getDataPath())
-gazebo_world_parser.parseWorld(p, filepath="worlds/0_prop.world")
+gazebo_world_parser.parseWorld(p, filepath="worlds/0.world")
 p.loadURDF("plane.urdf")
 p.loadURDF(r"D:\Code\3Dmodel\small_track.urdf", basePosition=[0,0,0.055])
 p.setGravity(0, 0, -9.8)
 p.setRealTimeSimulation(1)
 
 # 斑馬線
-create_zebra_crossing(start_pos=[-4.5, -15.9, 0.0965], num_lines=7, spacing=0.3125)
+create_zebra_crossing(start_pos=[-4.5, -15.9, 0.065], num_lines=7, spacing=0.3125)
 
 # 三角錐
 cone_positions = [
@@ -210,7 +209,7 @@ cone_positions = [
     [-19, -14.3, 0.1],
      [-10, 15, 0.1]
 ]
-placed_cone_ids = place_cones(cone_positions)
+#placed_cone_ids = place_cones(cone_positions)
 
 # 樹
 tree_positions = [
@@ -220,7 +219,7 @@ tree_positions = [
     [-18, 12, 0.0],
     [-20, 18, 0.0]
 ]
-placed_tree_ids = place_trees(tree_positions)
+#placed_tree_ids = place_trees(tree_positions)
 
 # 人
 humanoidStartPos = [-4.5, -15.5, 0.09]
