@@ -117,7 +117,7 @@ def create_zebra_crossing(start_pos=[0, 0, 0.05], num_lines=6, spacing=0.3, line
 # ---------------------------
 def place_cones(positions):
     cone_ids = []
-    cone_urdf_path = r"D:\Code\3Dmodel\cone.urdf"
+    cone_urdf_path = "cone.urdf"
     # <<< 關鍵修正 >>>
     # 在嘗試載入之前，先檢查檔案是否存在。
     if not os.path.exists(cone_urdf_path):
@@ -146,7 +146,7 @@ def place_cones(positions):
 # ---------------------------
 def place_trees(positions):
     tree_ids = []
-    tree_urdf_path = r"D:\Code\3Dmodel\tree.urdf"
+    tree_urdf_path = "tree.urdf"
 
     if not os.path.exists(tree_urdf_path):
         print(f"[ERROR] 找不到 URDF 檔案，請檢查路徑是否正確：{tree_urdf_path}")
@@ -193,7 +193,8 @@ physicsClient = p.connect(p.GUI)
 p.setAdditionalSearchPath(pybullet_data.getDataPath())
 gazebo_world_parser.parseWorld(p, filepath="worlds/0.world")
 p.loadURDF("plane.urdf")
-p.loadURDF(r"D:\Code\3Dmodel\small_track.urdf", basePosition=[0,0,0.055])
+p.setAdditionalSearchPath(os.path.join(os.getcwd(), "3Dmodel"))
+p.loadURDF("small_track.urdf", basePosition=[0,0,0.055])
 p.setGravity(0, 0, -9.8)
 p.setRealTimeSimulation(1)
 
@@ -224,7 +225,7 @@ tree_positions = [
 # 人
 humanoidStartPos = [-4.5, -15.5, 0.09]
 humanoidStartOrientation = p.getQuaternionFromEuler([0, 0, np.pi/2])
-humanoid = p.loadURDF(r"D:\Code\3Dmodel\man.urdf", humanoidStartPos, humanoidStartOrientation)
+humanoid = p.loadURDF("man.urdf", humanoidStartPos, humanoidStartOrientation)
 cid = p.createConstraint(humanoid, -1, -1, -1, p.JOINT_POINT2POINT, [0, 0, 0], [0, 0, 0], [humanoidStartPos[0], humanoidStartPos[1], 0.5])
 p.changeConstraint(cid, maxForce=50)
 current_yaw = np.pi/2
@@ -236,7 +237,7 @@ last_pos, _ = p.getBasePositionAndOrientation(humanoid)
 # 車
 r2d2StartPos = [-7, -15.5, 0.35]
 r2d2StartOrientation = p.getQuaternionFromEuler([0, 0, 0])
-r2d2 = p.loadURDF(r"D:\Code\3Dmodel\front_car.urdf", r2d2StartPos, r2d2StartOrientation)
+r2d2 = p.loadURDF("front_car.urdf", r2d2StartPos, r2d2StartOrientation)
 numJoints = p.getNumJoints(r2d2)
 
 # 控制

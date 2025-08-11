@@ -215,7 +215,8 @@ p.setAdditionalSearchPath(pybullet_data.getDataPath())
 #gazebo_world_parser.parseWorld(p, filepath="worlds/new.world")
 #p.loadURDF(r"D:\Code\full_track_nowall.urdf", basePosition=[0,0,0.1])
 p.loadURDF("plane.urdf")
-p.loadURDF(r"0710/test.urdf", basePosition=[0,0,0.1])
+p.setAdditionalSearchPath(os.path.join(os.getcwd(), "3Dmodel"))
+p.loadURDF("test.urdf", basePosition=[0,0,0.1])
 p.setGravity(0, 0, -9.8)
 p.setRealTimeSimulation(1)
 #create_zebra_crossing(start_pos=[5, 13.8, 0.0965], num_lines=9, spacing=0.3125)
@@ -223,7 +224,7 @@ p.setRealTimeSimulation(1)
 # Humanoid
 humanoidStartPos = [5, 13.3, 0.09]
 humanoidStartOrientation = p.getQuaternionFromEuler([0, 0, np.pi/2])
-humanoid = p.loadURDF('0710/man.urdf', humanoidStartPos, humanoidStartOrientation)
+humanoid = p.loadURDF("man.urdf", humanoidStartPos, humanoidStartOrientation)
 cid = p.createConstraint(humanoid, -1, -1, -1, p.JOINT_POINT2POINT, [0, 0, 0], [0, 0, 0], [humanoidStartPos[0], humanoidStartPos[1], 0.5])
 p.changeConstraint(cid, maxForce=50)
 current_yaw = np.pi/2

@@ -118,18 +118,8 @@ def create_zebra_crossing(start_pos=[0, 0, 0.05], num_lines=6, spacing=0.3, line
 # ---------------------------
 def place_cones(positions):
     cone_ids = []
-    cone_urdf_path = r"D:\Code\3Dmodel\cone.urdf"
-    # <<< 關鍵修正 >>>
-    # 在嘗試載入之前，先檢查檔案是否存在。
-    if not os.path.exists(cone_urdf_path):
-        # 如果檔案不存在，列印明確的錯誤訊息並停止。
-        print(f"[ERROR] 找不到 URDF 檔案，請檢查路徑是否正確：{cone_urdf_path}")
-        print("[ERROR] 載入三角錐失敗，請確認 D:\Code\3Dmodel 資料夾是否存在。")
-        return []
-    else:
-        # 如果檔案存在，才執行載入
-        print(f"[INFO] 找到 URDF 檔案，準備載入模型：{cone_urdf_path}")
-
+    cone_urdf_path = "cone.urdf"
+    
     for pos in positions:
         try:
             # 嘗試載入 URDF 檔案
@@ -147,13 +137,7 @@ def place_cones(positions):
 # ---------------------------
 def place_trees(positions):
     tree_ids = []
-    tree_urdf_path = r"D:\Code\3Dmodel\tree.urdf"
-
-    if not os.path.exists(tree_urdf_path):
-        print(f"[ERROR] 找不到 URDF 檔案，請檢查路徑是否正確：{tree_urdf_path}")
-        return []
-    
-    print(f"[INFO] 找到 URDF 檔案，準備載入樹木模型：{tree_urdf_path}")
+    tree_urdf_path = "tree.urdf"
 
     for pos in positions:
         try:
@@ -194,7 +178,8 @@ physicsClient = p.connect(p.GUI)
 p.setAdditionalSearchPath(pybullet_data.getDataPath())
 gazebo_world_parser.parseWorld(p, filepath="worlds/0_prop.world")
 p.loadURDF("plane.urdf")
-p.loadURDF(r"D:\Code\3Dmodel\small_track.urdf", basePosition=[0,0,0.055])
+p.setAdditionalSearchPath(os.path.join(os.getcwd(), "3Dmodel"))
+p.loadURDF("small_track.urdf", basePosition=[0,0,0.055])
 p.setGravity(0, 0, -9.8)
 p.setRealTimeSimulation(1)
 
@@ -225,7 +210,7 @@ placed_tree_ids = place_trees(tree_positions)
 # 人
 humanoidStartPos = [-4.5, -15.5, 0.09]
 humanoidStartOrientation = p.getQuaternionFromEuler([0, 0, np.pi/2])
-humanoid = p.loadURDF(r"D:\Code\3Dmodel\man.urdf", humanoidStartPos, humanoidStartOrientation)
+humanoid = p.loadURDF("man.urdf", humanoidStartPos, humanoidStartOrientation)
 cid = p.createConstraint(humanoid, -1, -1, -1, p.JOINT_POINT2POINT, [0, 0, 0], [0, 0, 0], [humanoidStartPos[0], humanoidStartPos[1], 0.5])
 p.changeConstraint(cid, maxForce=50)
 current_yaw = np.pi/2
@@ -237,7 +222,7 @@ last_pos, _ = p.getBasePositionAndOrientation(humanoid)
 # 車
 r2d2StartPos = [-7, -15.5, 0.35]
 r2d2StartOrientation = p.getQuaternionFromEuler([0, 0, 0])
-r2d2 = p.loadURDF(r"D:\Code\3Dmodel\front_car.urdf", r2d2StartPos, r2d2StartOrientation)
+r2d2 = p.loadURDF("front_car.urdf", r2d2StartPos, r2d2StartOrientation)
 numJoints = p.getNumJoints(r2d2)
 
 # 控制

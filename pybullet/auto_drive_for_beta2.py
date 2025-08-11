@@ -21,27 +21,19 @@ from PIL import Image
 from collections import deque # 用於高效地處理影像序列
 
 # --- 1. AI 模型參數 (必須與訓練時完全一致) ---
-MODEL_PATH = 'best_transformer_driver_model.pth' # 指定訓練好的模型檔案
-
-# 優化後的模型與訓練參數
-SEQUENCE_LENGTH = 12  # 減少序列長度以節省記憶體
-BATCH_SIZE = 6        # 針對8G顯卡優化
-EPOCHS = 80
-LEARNING_RATE = 3e-4  # 提高初始學習率
-IMG_HEIGHT = 160      # 降低解析度以節省記憶體
+MODEL_PATH = 'best_transformer_driver_model3ㄋ.pth' # 指定訓練好的模型檔案
+SEQUENCE_LENGTH = 20 # MUST MATCH TRAINING SCRIPT
+IMG_HEIGHT = 224
 IMG_WIDTH = 224
+D_MODEL = 768  # ResNet-18 的輸出維度 #MUST MATCH TRAINING SCRIPT
+N_HEAD = 12 #MUST MATCH TRAINING SCRIPT
+N_LAYERS = 6 #MUST MATCH TRAINING SCRIPT
+DROPOUT = 0.5 #MUST MATCH TRAINING SCRIPT
 
-# 優化後的 Transformer 模型參數
-D_MODEL = 384
-N_HEAD = 6
-N_LAYERS = 4
-DROPOUT = 0.15
-
-# 圖片裁切參數
-CROP_TOP_PIXELS = 260
+# 圖片裁切參數 (裁掉圖片頂部包含文字的部分)
+CROP_TOP_PIXELS = 240 #MUST MATCH TRAINING SCRIPT
 ORIGINAL_HEIGHT = 480
 ORIGINAL_WIDTH = 640
-
 
 data_log = []
 SAVE_IMG = True 
@@ -62,7 +54,6 @@ class PositionalEncoding(nn.Module):
         pe[:, 1::2] = torch.cos(position * div_term)
         pe = pe.unsqueeze(0).transpose(0, 1)
         self.register_buffer('pe', pe)
-    
     def forward(self, x):
         x = x + self.pe[:x.size(0), :]
         return self.dropout(x)
@@ -70,77 +61,28 @@ class PositionalEncoding(nn.Module):
 class VisionTransformerDriver(nn.Module):
     def __init__(self, d_model, nhead, num_encoder_layers, dropout, num_classes=2):
         super(VisionTransformerDriver, self).__init__()
-        
-        # 使用更輕量的 CNN backbone
-        efficientnet = models.efficientnet_b0(weights=models.EfficientNet_B0_Weights.DEFAULT)
-        self.cnn = nn.Sequential(
-            efficientnet.features,
-            nn.AdaptiveAvgPool2d((1, 1)),
-            nn.Flatten(),
-            nn.BatchNorm1d(1280),
-            nn.Dropout(0.3)
-        )
-        
-        # 特徵投影層
-        self.feature_proj = nn.Sequential(
-            nn.Linear(1280, d_model),
-            nn.LayerNorm(d_model),
-            nn.ReLU(),
-            nn.Dropout(dropout)
-        )
-        
-        # 位置編碼
+        resnet = models.resnet18(weights=models.ResNet18_Weights.DEFAULT)
+        self.cnn = nn.Sequential(*list(resnet.children())[:-1])
         self.pos_encoder = PositionalEncoding(d_model, dropout)
-        
-        # Transformer 編碼器
-        encoder_layers = nn.TransformerEncoderLayer(
-            d_model, nhead, 
-            dim_feedforward=d_model * 2,
-            dropout=dropout, 
-            batch_first=True,
-            activation='gelu'
-        )
+        encoder_layers = nn.TransformerEncoderLayer(d_model, nhead, dropout=dropout, batch_first=True)
         self.transformer_encoder = nn.TransformerEncoder(encoder_layers, num_encoder_layers)
-        
-        # 分類 token
         self.cls_token = nn.Parameter(torch.zeros(1, 1, d_model))
-        nn.init.normal_(self.cls_token, std=0.02)
-        
-        # 輸出層
-        self.output_fc = nn.Sequential(
-            nn.LayerNorm(d_model),
-            nn.Linear(d_model, d_model // 2),
-            nn.GELU(),
-            nn.Dropout(dropout),
-            nn.Linear(d_model // 2, num_classes)
-        )
-        
+        self.output_fc = nn.Linear(d_model, num_classes)
         self.d_model = d_model
-    
     def forward(self, x):
         batch_size, seq_len, c, h, w = x.shape
-        
-        # CNN 特徵提取
         x = x.view(batch_size * seq_len, c, h, w)
-        features = self.cnn(x)
-        features = self.feature_proj(features)
-        features = features.view(batch_size, seq_len, self.d_model)
-        
-        # 添加 CLS token
+        features = self.cnn(x).view(batch_size, seq_len, self.d_model)
         cls_tokens = self.cls_token.expand(batch_size, -1, -1)
         x = torch.cat((cls_tokens, features), dim=1)
-        
-        # Transformer 處理
         x = x.transpose(0, 1)
         x = self.pos_encoder(x)
         x = x.transpose(0, 1)
-        
         transformer_output = self.transformer_encoder(x)
         cls_output = transformer_output[:, 0, :]
-        
-        # 最終預測
         out = self.output_fc(cls_output)
         return out
+
 
 # --- 3. AI 模型載入與預測函式 ---
 def load_model(model_path, device):
@@ -268,17 +210,19 @@ def create_zebra_crossing(start_pos=[0, 0, 0.05], num_lines=6, spacing=0.3, line
 # ---------------------------
 physicsClient = p.connect(p.GUI)
 p.setAdditionalSearchPath(pybullet_data.getDataPath())
+#gazebo_world_parser.parseWorld(p, filepath="worlds/new.world")
+#p.loadURDF(r"D:\Code\full_track_nowall.urdf", basePosition=[0,0,0.1])
 p.loadURDF("plane.urdf")
 p.setAdditionalSearchPath(os.path.join(os.getcwd(), "3Dmodel"))
-p.loadURDF("test.urdf", basePosition=[0,0,-0.07])
+p.loadURDF("test.urdf", basePosition=[0,0,0.1])
 p.setGravity(0, 0, -9.8)
 p.setRealTimeSimulation(1)
 #create_zebra_crossing(start_pos=[5, 13.8, 0.0965], num_lines=9, spacing=0.3125)
 
-# 人
+# Humanoid
 humanoidStartPos = [5, 13.3, 0.09]
 humanoidStartOrientation = p.getQuaternionFromEuler([0, 0, np.pi/2])
-humanoid = p.loadURDF("man.urdf", humanoidStartPos, humanoidStartOrientation)
+humanoid = p.loadURDF('man.urdf', humanoidStartPos, humanoidStartOrientation)
 cid = p.createConstraint(humanoid, -1, -1, -1, p.JOINT_POINT2POINT, [0, 0, 0], [0, 0, 0], [humanoidStartPos[0], humanoidStartPos[1], 0.5])
 p.changeConstraint(cid, maxForce=50)
 current_yaw = np.pi/2
@@ -287,10 +231,10 @@ is_forward_pressed = False
 is_backward_pressed = False
 last_pos, _ = p.getBasePositionAndOrientation(humanoid)
 
-# 車
+# Vehicle
 r2d2StartPos = [0, 1.25, 2]
 r2d2StartOrientation = p.getQuaternionFromEuler([0, 0, 0])
-r2d2 = p.loadURDF('front_car.urdf', r2d2StartPos, r2d2StartOrientation)
+r2d2 = p.loadURDF('real_car.urdf', r2d2StartPos, r2d2StartOrientation)
 numJoints = p.getNumJoints(r2d2)
 
 # Controls
@@ -300,14 +244,39 @@ forward_speed = 20
 pitch = p.addUserDebugParameter('camerapitch', 0, 360, 269)
 yaw = p.addUserDebugParameter('camerayaw', 0, 360, 90)
 #distance = p.addUserDebugParameter('cameradistance', 0, 6, 2) 
-distance = p.addUserDebugParameter('cameradistance', 0, 100, 10) 
+distance = p.addUserDebugParameter('cameradistance', 0, 100, 10)
 speed_slider = p.addUserDebugParameter('speed', -50, 50, 20)
 
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu') #DEFINE DEVICE
+print(f"將使用設備: {device}")
 
 # Camera
 width, height = 640, 480
-fov, aspect, near, far = 60, width/height, 0.1, 100
-projection_matrix = p.computeProjectionMatrixFOV(fov, aspect, near, far)
+fov, aspect, near, far = 60, width / height, 0.1, 100
+
+# 定義 CustomTopCrop transform
+class CustomTopCrop(object):
+    def __init__(self, crop_top_pixels):
+        self.crop_top_pixels = crop_top_pixels
+
+    def __call__(self, img):
+        # img: PIL Image
+        width, height = img.size
+        return img.crop((0, self.crop_top_pixels, width, height))
+
+transform = transforms.Compose([ #DEFINE TRANSFORM
+    CustomTopCrop(CROP_TOP_PIXELS),
+    transforms.Resize((IMG_HEIGHT, IMG_WIDTH)),
+    transforms.ToTensor(),
+    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+])
+
+model = load_model(MODEL_PATH, device) #LOAD MODEL
+
+if model is None:
+    print("模型載入失敗，無法執行自動駕駛。")
+else:
+    print("模型載入成功，準備開始自動駕駛。")
 
 # Folder setup
 now = datetime.datetime.now(tz=datetime.timezone(datetime.timedelta(hours=8)))
@@ -455,6 +424,7 @@ try:
         camera_target = [camera_pos[0]+camera_forward[0], camera_pos[1]+camera_forward[1], camera_pos[2]+camera_forward[2]]
 
         view_matrix = p.computeViewMatrix(camera_pos, camera_target, camera_up)
+        projection_matrix = p.computeProjectionMatrixFOV(fov, aspect, near, far)
         img_arr = p.getCameraImage(width, height, view_matrix, projection_matrix)
         rgb_img = img_arr[2]
         depth_buffer = np.reshape(img_arr[3], (height, width))

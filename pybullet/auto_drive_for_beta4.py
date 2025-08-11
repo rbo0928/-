@@ -21,17 +21,18 @@ from PIL import Image
 from collections import deque # 用於高效地處理影像序列
 
 # --- 1. AI 模型參數 (必須與訓練時完全一致) ---
-MODEL_PATH = 'best_transformer_driver_model3ㄋ.pth' # 指定訓練好的模型檔案
-SEQUENCE_LENGTH = 20 # MUST MATCH TRAINING SCRIPT
+MODEL_PATH = 'best_transformer_driver_model.pth' # 指定訓練好的模型檔案
+
+SEQUENCE_LENGTH = 15
 IMG_HEIGHT = 224
 IMG_WIDTH = 224
-D_MODEL = 768  # ResNet-18 的輸出維度 #MUST MATCH TRAINING SCRIPT
-N_HEAD = 12 #MUST MATCH TRAINING SCRIPT
-N_LAYERS = 6 #MUST MATCH TRAINING SCRIPT
-DROPOUT = 0.5 #MUST MATCH TRAINING SCRIPT
+D_MODEL = 256
+N_HEAD = 4
+N_LAYERS = 2
+DROPOUT = 0.2
 
 # 圖片裁切參數 (裁掉圖片頂部包含文字的部分)
-CROP_TOP_PIXELS = 240 #MUST MATCH TRAINING SCRIPT
+CROP_TOP_PIXELS = 260
 ORIGINAL_HEIGHT = 480
 ORIGINAL_WIDTH = 640
 
@@ -54,95 +55,49 @@ class PositionalEncoding(nn.Module):
         pe[:, 1::2] = torch.cos(position * div_term)
         pe = pe.unsqueeze(0).transpose(0, 1)
         self.register_buffer('pe', pe)
-
     def forward(self, x):
         x = x + self.pe[:x.size(0), :]
         return self.dropout(x)
 
-# 【修改點】升級後的 VisionTransformerDriver
-class ComplexVisionTransformerDriver(nn.Module):
+class VisionTransformerDriver(nn.Module):
     def __init__(self, d_model, nhead, num_encoder_layers, dropout, num_classes=2):
-        super(ComplexVisionTransformerDriver, self).__init__()
-        self.d_model = d_model
-
-        # 1. 使用更強大的 ResNet50 作為 CNN 骨幹
-        #    並使用預訓練權重
-        resnet = models.resnet50(weights=models.ResNet50_Weights.DEFAULT)
-        #    移除 ResNet 最後的全連接層 (fc)
-        self.cnn = nn.Sequential(*list(resnet.children())[:-1])
-        
-        # 2. 新增一個線性層，將 ResNet50 的輸出 (2048 維) 投影到 Transformer 需要的維度 (d_model)
-        #    ResNet50 最後一個卷積層輸出的 channel 數是 2048
-        self.feature_projection = nn.Linear(resnet.fc.in_features, d_model)
-
-        # 3. 位置編碼器 (Positional Encoding)
-        self.pos_encoder = PositionalEncoding(d_model, dropout)
-        
-        # 4. Transformer 編碼器層
-        encoder_layers = nn.TransformerEncoderLayer(d_model, nhead, dim_feedforward=d_model*4, dropout=dropout, batch_first=True)
-        self.transformer_encoder = nn.TransformerEncoder(encoder_layers, num_encoder_layers)
-        
-        # 5. 可學習的 [CLS] Token
-        self.cls_token = nn.Parameter(torch.zeros(1, 1, d_model))
-
-        # 6. 升級輸出頭 (Output Head) 為一個小型 MLP
-        self.output_mlp = nn.Sequential(
-            nn.Linear(d_model, d_model // 2),
-            nn.ReLU(),
-            nn.Dropout(dropout),
-            nn.Linear(d_model // 2, num_classes)
+        super(VisionTransformerDriver, self).__init__()
+        resnet = models.resnet18(weights=models.ResNet18_Weights.DEFAULT)
+        # CNN backbone + BatchNorm + Dropout
+        self.cnn = nn.Sequential(
+            *list(resnet.children())[:-1],
+            nn.BatchNorm2d(512),
+            nn.Dropout2d(0.25)
         )
-
+        self.feature_proj = nn.Linear(512, d_model)  # CNN輸出降維
+        self.pos_encoder = PositionalEncoding(d_model, dropout)
+        encoder_layers = nn.TransformerEncoderLayer(d_model, nhead, dropout=dropout, batch_first=True)
+        self.transformer_encoder = nn.TransformerEncoder(encoder_layers, num_encoder_layers)
+        self.cls_token = nn.Parameter(torch.zeros(1, 1, d_model))
+        self.output_fc = nn.Linear(d_model, num_classes)
+        self.d_model = d_model
     def forward(self, x):
-        # 輸入維度: (batch_size, seq_len, C, H, W)
         batch_size, seq_len, c, h, w = x.shape
-        
-        # 將 batch 和 sequence 維度合併，以利 CNN 處理 
         x = x.view(batch_size * seq_len, c, h, w)
-        
-        # --- CNN 特徵提取 ---
-        # features 維度: (batch_size * seq_len, 2048, 1, 1)
-        features = self.cnn(x)
-        # features 維度: (batch_size * seq_len, 2048)
-        features = features.view(features.size(0), -1)
-        
-        # --- 特徵投影 ---
-        # projected_features 維度: (batch_size * seq_len, d_model)
-        projected_features = self.feature_projection(features)
-        
-        # 將維度還原為 (batch_size, seq_len, d_model)
-        projected_features = projected_features.view(batch_size, seq_len, self.d_model)
-        
-        # --- Transformer 處理 ---
-        # 準備 [CLS] token
+        features = self.cnn(x).view(batch_size * seq_len, 512)
+        features = self.feature_proj(features)
+        features = features.view(batch_size, seq_len, self.d_model)
         cls_tokens = self.cls_token.expand(batch_size, -1, -1)
-        
-        # 將 [CLS] token 加在序列的最前面
-        # x 維度: (batch_size, seq_len + 1, d_model)
-        x = torch.cat((cls_tokens, projected_features), dim=1)
-        
-        # 因為我們在 TransformerEncoderLayer 設定了 batch_first=True, 所以不需要再轉換維度
-        # x = x.transpose(0, 1)  <-- 這行不再需要
-        # x = self.pos_encoder(x)
-        # x = x.transpose(0, 1)  <-- 這行不再需要
-
-        # 直接傳入 Transformer Encoder
+        x = torch.cat((cls_tokens, features), dim=1)
+        x = x.transpose(0, 1)
+        x = self.pos_encoder(x)
+        x = x.transpose(0, 1)
         transformer_output = self.transformer_encoder(x)
-        
-        # 取出 [CLS] token 對應的輸出
-        # cls_output 維度: (batch_size, d_model)
         cls_output = transformer_output[:, 0, :]
-        
-        # --- MLP 輸出頭 ---
-        out = self.output_mlp(cls_output)
-        
+        out = self.output_fc(cls_output)
         return out
+
 
 # --- 3. AI 模型載入與預測函式 ---
 def load_model(model_path, device):
     """載入訓練好的模型"""
     print("正在載入 AI 模型...")
-    model = ComplexVisionTransformerDriver(D_MODEL, N_HEAD, N_LAYERS, DROPOUT)
+    model = VisionTransformerDriver(D_MODEL, N_HEAD, N_LAYERS, DROPOUT)
     try:
         model.load_state_dict(torch.load(model_path, map_location=device))
         model.to(device)
@@ -264,18 +219,17 @@ def create_zebra_crossing(start_pos=[0, 0, 0.05], num_lines=6, spacing=0.3, line
 # ---------------------------
 physicsClient = p.connect(p.GUI)
 p.setAdditionalSearchPath(pybullet_data.getDataPath())
-#gazebo_world_parser.parseWorld(p, filepath="worlds/new.world")
-#p.loadURDF(r"D:\Code\full_track_nowall.urdf", basePosition=[0,0,0.1])
 p.loadURDF("plane.urdf")
-p.loadURDF(r"0710/test.urdf", basePosition=[0,0,0.1])
+p.setAdditionalSearchPath(os.path.join(os.getcwd(), "3Dmodel"))
+p.loadURDF("test.urdf", basePosition=[0,0,-0.07])
 p.setGravity(0, 0, -9.8)
 p.setRealTimeSimulation(1)
 #create_zebra_crossing(start_pos=[5, 13.8, 0.0965], num_lines=9, spacing=0.3125)
 
-# Humanoid
+# 人
 humanoidStartPos = [5, 13.3, 0.09]
 humanoidStartOrientation = p.getQuaternionFromEuler([0, 0, np.pi/2])
-humanoid = p.loadURDF('0710/man.urdf', humanoidStartPos, humanoidStartOrientation)
+humanoid = p.loadURDF("man.urdf", humanoidStartPos, humanoidStartOrientation)
 cid = p.createConstraint(humanoid, -1, -1, -1, p.JOINT_POINT2POINT, [0, 0, 0], [0, 0, 0], [humanoidStartPos[0], humanoidStartPos[1], 0.5])
 p.changeConstraint(cid, maxForce=50)
 current_yaw = np.pi/2
@@ -284,10 +238,10 @@ is_forward_pressed = False
 is_backward_pressed = False
 last_pos, _ = p.getBasePositionAndOrientation(humanoid)
 
-# Vehicle
+# 車
 r2d2StartPos = [0, 1.25, 2]
 r2d2StartOrientation = p.getQuaternionFromEuler([0, 0, 0])
-r2d2 = p.loadURDF('real_car.urdf', r2d2StartPos, r2d2StartOrientation)
+r2d2 = p.loadURDF("front_car.urdf", r2d2StartPos, r2d2StartOrientation)
 numJoints = p.getNumJoints(r2d2)
 
 # Controls
@@ -297,39 +251,14 @@ forward_speed = 20
 pitch = p.addUserDebugParameter('camerapitch', 0, 360, 269)
 yaw = p.addUserDebugParameter('camerayaw', 0, 360, 90)
 #distance = p.addUserDebugParameter('cameradistance', 0, 6, 2) 
-distance = p.addUserDebugParameter('cameradistance', 0, 100, 10)
+distance = p.addUserDebugParameter('cameradistance', 0, 100, 10) 
 speed_slider = p.addUserDebugParameter('speed', -50, 50, 20)
 
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu') #DEFINE DEVICE
-print(f"將使用設備: {device}")
 
 # Camera
 width, height = 640, 480
-fov, aspect, near, far = 60, width / height, 0.1, 100
-
-# 定義 CustomTopCrop transform
-class CustomTopCrop(object):
-    def __init__(self, crop_top_pixels):
-        self.crop_top_pixels = crop_top_pixels
-
-    def __call__(self, img):
-        # img: PIL Image
-        width, height = img.size
-        return img.crop((0, self.crop_top_pixels, width, height))
-
-transform = transforms.Compose([ #DEFINE TRANSFORM
-    CustomTopCrop(CROP_TOP_PIXELS),
-    transforms.Resize((IMG_HEIGHT, IMG_WIDTH)),
-    transforms.ToTensor(),
-    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-])
-
-model = load_model(MODEL_PATH, device) #LOAD MODEL
-
-if model is None:
-    print("模型載入失敗，無法執行自動駕駛。")
-else:
-    print("模型載入成功，準備開始自動駕駛。")
+fov, aspect, near, far = 60, width/height, 0.1, 100
+projection_matrix = p.computeProjectionMatrixFOV(fov, aspect, near, far)
 
 # Folder setup
 now = datetime.datetime.now(tz=datetime.timezone(datetime.timedelta(hours=8)))
@@ -477,7 +406,6 @@ try:
         camera_target = [camera_pos[0]+camera_forward[0], camera_pos[1]+camera_forward[1], camera_pos[2]+camera_forward[2]]
 
         view_matrix = p.computeViewMatrix(camera_pos, camera_target, camera_up)
-        projection_matrix = p.computeProjectionMatrixFOV(fov, aspect, near, far)
         img_arr = p.getCameraImage(width, height, view_matrix, projection_matrix)
         rgb_img = img_arr[2]
         depth_buffer = np.reshape(img_arr[3], (height, width))
