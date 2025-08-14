@@ -8,6 +8,7 @@ import numpy as np
 import datetime, os
 import pandas as pd
 from sklearn.model_selection import train_test_split
+from ultralytics import YOLO
 import shutil
 data_log = []
 SAVE_IMG = True
@@ -240,6 +241,20 @@ width, height = 640, 480
 fov, aspect, near, far = 60, width/height, 0.1, 100
 projection_matrix = p.computeProjectionMatrixFOV(fov, aspect, near, far)
 
+# ==================== 新增：載入 YOLO 模型 ====================
+pedestrian_model = None
+if YOLO is not None:
+    print("正在載入 YOLOv8 行人偵測模型...")
+    try:
+        pedestrian_model = YOLO('yolov8n.pt') # yolov8n.pt 是一個輕量且快速的模型
+        pedestrian_model.to("cuda")
+        print("YOLOv8 模型載入成功。")
+    except Exception as e:
+        print(f"載入 YOLO 模型時發生錯誤: {e}")
+        pedestrian_model = None
+# ===============================================================
+
+
 # ---------------------------
 # 主迴圈
 # ---------------------------
@@ -395,7 +410,19 @@ try:
 
         img = np.reshape(np.array(rgb_img, dtype=np.uint8), (height, width, 4))
         img = cv2.cvtColor(img, cv2.COLOR_RGBA2BGR)
-        #lane_offset = get_lane_offset_by_opencv(img, width)
+        # YOLO 物件偵測並畫框
+        if pedestrian_model is not None:
+            results = pedestrian_model(img, verbose=False)
+            for r in results:
+                if hasattr(r, 'boxes'):
+                    for box in r.boxes:
+                        x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
+                        conf = float(box.conf[0]) if hasattr(box, 'conf') else None
+                        cls = int(box.cls[0]) if hasattr(box, 'cls') else None
+                        label = pedestrian_model.names[cls] if cls is not None and hasattr(pedestrian_model, 'names') else 'obj'
+                        cv2.rectangle(img, (x1, y1), (x2, y2), (0,255,0), 2)
+                        text = f"{label} {conf:.2f}" if conf is not None else label
+                        cv2.putText(img, text, (x1, y1-10), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,255,0), 2)
 
         # Speed
         linear_velocity, _ = p.getBaseVelocity(r2d2)
