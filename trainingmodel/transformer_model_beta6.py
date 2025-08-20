@@ -54,9 +54,12 @@ IMG_WIDTH = 224
 
 # Transformer 模型參數3
 D_MODEL = 512
+D_MODEL = 512
 N_HEAD = 8
 N_LAYERS = 4
-DROPOUT = 0.15
+DROPOUT = 0.3
+if RETRAIN and os.path.exists(BEST_MODEL_SAVE_PATH):
+    DROPOUT = 0.15
 
 # 圖片裁切參數
 CROP_TOP_PIXELS = 260
