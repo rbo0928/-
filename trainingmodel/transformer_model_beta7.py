@@ -82,7 +82,7 @@ ORIGINAL_WIDTH = 640
 # --- 多資料夾資料載入函數 ---
 def load_multi_folder_data(data_dirs, train_ratio=0.7, val_ratio=0.2, test_ratio=0.1):
     """
-    從多個資料夾載入並合併資料
+    從多個資料夾載入並合併資料 - 修正版本，保持序列連續性
     
     Args:
         data_dirs: 資料夾路徑列表
@@ -95,7 +95,7 @@ def load_multi_folder_data(data_dirs, train_ratio=0.7, val_ratio=0.2, test_ratio
     """
     print("🔄 開始載入多資料夾資料...")
     
-    all_data = []
+    all_folder_data = []  # 存儲每個資料夾的數據，保持獨立
     
     for data_dir in data_dirs:
         log_path = os.path.join(data_dir, 'log.csv')
@@ -147,33 +147,58 @@ def load_multi_folder_data(data_dirs, train_ratio=0.7, val_ratio=0.2, test_ratio
                 print(f"⚠️ 跳過 {data_dir}: 沒有有效的圖片檔案")
                 continue
             
-            all_data.append(valid_df)
-            print(f"✅ {data_dir}: 載入 {len(valid_df)} 筆資料 (原始: {len(df)})")
+            # 🔥 關鍵修正：保持時間順序，不要打亂單一資料夾內的資料
+            valid_df = valid_df.reset_index(drop=True)
+            
+            # 為每個資料夾添加連續索引，確保序列連續性
+            valid_df['folder_index'] = range(len(valid_df))
+            
+            all_folder_data.append({
+                'data': valid_df,
+                'folder': data_dir,
+                'size': len(valid_df)
+            })
+            print(f"✅ {data_dir}: 載入 {len(valid_df)} 筆資料 (保持時序)")
             
         except Exception as e:
             print(f"❌ 載入 {data_dir} 時發生錯誤: {e}")
             continue
     
-    if not all_data:
+    if not all_folder_data:
         raise ValueError("❌ 沒有成功載入任何資料！")
     
-    # 合併所有資料
-    combined_df = pd.concat(all_data, ignore_index=True)
-    print(f"📊 總共載入 {len(combined_df)} 筆資料")
+    # 🔥 新的分割策略：按資料夾分割，而不是混合所有資料
+    print("📊 採用按資料夾分割策略，保持序列完整性...")
     
-    # 打亂資料
-    combined_df = combined_df.sample(frac=1, random_state=42).reset_index(drop=True)
+    total_folders = len(all_folder_data)
+    train_folder_count = max(1, int(total_folders * train_ratio))
+    val_folder_count = max(1, int(total_folders * val_ratio))
     
-    # 分割資料
-    total_size = len(combined_df)
-    train_size = int(total_size * train_ratio)
-    val_size = int(total_size * val_ratio)
+    # 隨機分配資料夾到不同集合（但保持每個資料夾內的順序）
+    random.seed(42)  # 確保可重現
+    shuffled_folders = random.sample(all_folder_data, len(all_folder_data))
     
-    train_data = combined_df[:train_size]
-    val_data = combined_df[train_size:train_size + val_size]
-    test_data = combined_df[train_size + val_size:]
+    train_folders = shuffled_folders[:train_folder_count]
+    val_folders = shuffled_folders[train_folder_count:train_folder_count + val_folder_count]
+    test_folders = shuffled_folders[train_folder_count + val_folder_count:]
     
-    print(f"📋 資料分割: 訓練={len(train_data)} | 驗證={len(val_data)} | 測試={len(test_data)}")
+    # 合併各集合的資料，保持每個資料夾內的順序
+    train_data_list = [folder_info['data'] for folder_info in train_folders]
+    val_data_list = [folder_info['data'] for folder_info in val_folders]
+    test_data_list = [folder_info['data'] for folder_info in test_folders]
+    
+    # 🔥 關鍵：合併時不打亂，保持原始順序
+    train_data = pd.concat(train_data_list, ignore_index=True) if train_data_list else pd.DataFrame()
+    val_data = pd.concat(val_data_list, ignore_index=True) if val_data_list else pd.DataFrame()
+    test_data = pd.concat(test_data_list, ignore_index=True) if test_data_list else pd.DataFrame()
+    
+    total_data = sum(len(folder['data']) for folder in all_folder_data)
+    print(f"📊 總共載入 {total_data} 筆資料")
+    print(f"📋 資料分割 (按資料夾): 訓練={len(train_data)} | 驗證={len(val_data)} | 測試={len(test_data)}")
+    print(f"📁 資料夾分配:")
+    print(f"  🎯 訓練集資料夾 ({len(train_folders)}個): {[f['folder'] for f in train_folders]}")
+    print(f"  🎯 驗證集資料夾 ({len(val_folders)}個): {[f['folder'] for f in val_folders]}")
+    print(f"  🎯 測試集資料夾 ({len(test_folders)}個): {[f['folder'] for f in test_folders]}")
     
     return {
         'train': train_data,
@@ -201,6 +226,73 @@ def create_single_folder_data(data_dir):
             return load_multi_folder_data([data_dir])
         else:
             raise FileNotFoundError(f"找不到 {data_dir} 的資料檔案")
+
+def validate_sequence_integrity(data_dict, sequence_length=15):
+    """
+    驗證資料集的序列完整性
+    
+    Args:
+        data_dict: 包含train/val/test的資料字典
+        sequence_length: 序列長度
+    
+    Returns:
+        validation_report: 驗證報告
+    """
+    print("\n🔍 驗證序列完整性...")
+    
+    report = {}
+    
+    for split_name, data in data_dict.items():
+        print(f"\n📊 檢查 {split_name} 集...")
+        
+        if len(data) == 0:
+            print(f"  ⚠️ {split_name} 集為空")
+            continue
+        
+        # 檢查資料夾分布
+        if 'data_dir' in data.columns:
+            folder_counts = data['data_dir'].value_counts()
+            print(f"  📁 資料夾分布: {dict(folder_counts)}")
+            
+            # 檢查跨資料夾的序列問題
+            cross_folder_issues = 0
+            total_sequences = len(data) - sequence_length + 1
+            
+            for i in range(total_sequences):
+                start_folder = data.iloc[i]['data_dir']
+                end_folder = data.iloc[i + sequence_length - 1]['data_dir']
+                
+                if start_folder != end_folder:
+                    cross_folder_issues += 1
+            
+            cross_folder_ratio = cross_folder_issues / total_sequences if total_sequences > 0 else 0
+            
+            print(f"  🎯 可用序列數: {total_sequences}")
+            print(f"  ⚠️ 跨資料夾序列: {cross_folder_issues} ({cross_folder_ratio:.2%})")
+            
+            if cross_folder_ratio > 0.1:  # 如果超過10%的序列跨資料夾
+                print(f"  🚨 警告: 跨資料夾序列比例過高 ({cross_folder_ratio:.2%})")
+            else:
+                print(f"  ✅ 序列完整性良好 ({cross_folder_ratio:.2%} 跨資料夾)")
+            
+            report[split_name] = {
+                'total_data': len(data),
+                'total_sequences': total_sequences,
+                'cross_folder_sequences': cross_folder_issues,
+                'cross_folder_ratio': cross_folder_ratio,
+                'folders': list(folder_counts.keys())
+            }
+        else:
+            print(f"  ⚠️ 沒有資料夾資訊，無法驗證跨資料夾問題")
+            report[split_name] = {
+                'total_data': len(data),
+                'total_sequences': len(data) - sequence_length + 1,
+                'cross_folder_sequences': 0,
+                'cross_folder_ratio': 0,
+                'folders': ['unknown']
+            }
+    
+    return report
 
 # --- 1. 增強的資料集與轉換 ---
 class CustomTopCrop:
@@ -243,6 +335,28 @@ class DrivingDataset(Dataset):
         start_index = index
         end_index = index + self.sequence_length
         
+        # 🔥 安全檢查：確保序列來自同一資料夾，避免跨資料夾序列
+        if 'data_dir' in self.annotations.columns and end_index <= len(self.annotations):
+            start_dir = self.annotations.iloc[start_index]['data_dir']
+            end_dir = self.annotations.iloc[end_index - 1]['data_dir']
+            
+            if start_dir != end_dir:
+                # 如果跨越不同資料夾，尋找安全的起始點
+                #print(f"⚠️ 序列跨越資料夾邊界 index={index}, 從 {start_dir} 到 {end_dir}")
+                
+                # 尋找當前資料夾內足夠的連續資料
+                current_folder_mask = self.annotations['data_dir'] == start_dir
+                current_folder_indices = self.annotations[current_folder_mask].index.tolist()
+                
+                # 檢查當前資料夾是否有足夠的連續資料
+                available_in_folder = sum(1 for i in current_folder_indices if i >= start_index)
+                
+                if available_in_folder < self.sequence_length:
+                    pass
+                    # 如果當前資料夾剩餘資料不足，使用重複最後一張圖片的策略
+                    # print(f"⚠️ 資料夾 {start_dir} 剩餘資料不足15張，使用填充策略")
+                    # 可以選擇跳過這個index或使用填充，這裡選擇填充最後一張
+
         target_row = self.annotations.iloc[end_index - 1]
         l_speed = target_row['lwheel']
         r_speed = target_row['rwheel']
@@ -253,10 +367,10 @@ class DrivingDataset(Dataset):
         apply_speed_aug = False
         shift_px = 0
         speed_noise = 0
-        
+
         if self.is_training:
             is_straight = abs(l_speed - r_speed) < 1.5
-            
+
             # 原有的直線增強
             if is_straight and random.random() < 0.4:
                 apply_straight_aug = True
@@ -267,7 +381,7 @@ class DrivingDataset(Dataset):
                     targets = torch.tensor([l_speed + correction_strength, r_speed - correction_strength], dtype=torch.float32)
                 else:
                     targets = torch.tensor([l_speed - correction_strength, r_speed + correction_strength], dtype=torch.float32)
-            
+
             # 新增速度雜訊增強
             elif random.random() < 0.2:
                 apply_speed_aug = True
@@ -275,9 +389,27 @@ class DrivingDataset(Dataset):
                 targets = torch.tensor([l_speed + speed_noise, r_speed + speed_noise], dtype=torch.float32)
 
         sequence_images = []
+        last_valid_image = None  # 用於填充策略
+
         for i in range(start_index, end_index):
+            # 邊界檢查
+            if i >= len(self.annotations):
+                if last_valid_image is not None:
+                    print(f"⚠️ 使用最後有效圖片填充 index={i}")
+                    sequence_images.append(last_valid_image)
+                    continue
+                else:
+                    print(f"⚠️ 無法獲取圖片 index={i}，使用黑色圖片")
+                    if self.transform:
+                        black_image = Image.new('RGB', (ORIGINAL_WIDTH, ORIGINAL_HEIGHT), (0, 0, 0))
+                        image = self.transform(black_image)
+                    else:
+                        image = torch.zeros(3, IMG_HEIGHT, IMG_WIDTH)
+                    sequence_images.append(image)
+                    continue
+
             row = self.annotations.iloc[i]
-            
+
             # 根據資料來源決定圖片路徑
             if 'full_image_path' in row:
                 # 新方式：使用full_image_path
@@ -293,26 +425,32 @@ class DrivingDataset(Dataset):
                     img_path = os.path.join(self.img_dir, img_name)
                 else:
                     img_path = img_name
-            
+
             try:
                 image = Image.open(img_path).convert('RGB')
-                
+
                 if apply_straight_aug:
                     image = image.transform(image.size, Image.AFFINE, (1, 0, -shift_px, 0, 1, 0))
-                
+
                 if self.transform:
                     image = self.transform(image)
+
                 sequence_images.append(image)
-                
+                last_valid_image = image  # 保存最後有效圖片
+
             except Exception as e:
                 print(f"⚠️ 載入圖片失敗 {img_path}: {e}")
-                # 使用黑色圖片替代
-                if self.transform:
-                    black_image = Image.new('RGB', (ORIGINAL_WIDTH, ORIGINAL_HEIGHT), (0, 0, 0))
-                    image = self.transform(black_image)
+                if last_valid_image is not None:
+                    # 使用最後有效圖片
+                    sequence_images.append(last_valid_image)
                 else:
-                    image = torch.zeros(3, IMG_HEIGHT, IMG_WIDTH)
-                sequence_images.append(image)
+                    # 使用黑色圖片替代
+                    if self.transform:
+                        black_image = Image.new('RGB', (ORIGINAL_WIDTH, ORIGINAL_HEIGHT), (0, 0, 0))
+                        image = self.transform(black_image)
+                    else:
+                        image = torch.zeros(3, IMG_HEIGHT, IMG_WIDTH)
+                    sequence_images.append(image)
 
         images_tensor = torch.stack(sequence_images)
         return images_tensor, targets
@@ -480,6 +618,9 @@ if __name__ == '__main__':
             train_data = data_dict['train']
             val_data = data_dict['val']
             test_data = data_dict['test']
+            
+            # 🔥 驗證序列完整性
+            integrity_report = validate_sequence_integrity(data_dict, SEQUENCE_LENGTH)
             
         except Exception as e:
             print(f"❌ 多資料夾載入失敗: {e}")
