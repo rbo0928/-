@@ -17,9 +17,33 @@ import numpy as np
 import random
 import torchvision.transforms.functional as TF
 
-# --- 多資料夾載入設定 ---
-# 可以指定多個資料夾路徑
-DATA_DIRS = [
+# --- 手動指定資料夾設定 ---
+# 手動指定各個集合的資料夾路徑
+MANUAL_FOLDER_ASSIGNMENT = True  # 設為True使用手動指定，False使用自動分割
+
+# 訓練集資料夾（您可以在這裡指定想要用於訓練的資料夾）
+TRAIN_FOLDERS = [
+    '2025_08_07/2',  # 範例資料夾
+    '2025_08_14/2',  # 範例資料夾 
+    '2025_08_14/3',  # 範例資料夾
+    # '2025_08_07/4',  # 您可以取消註解來加入更多資料夾
+    # '2025_08_12/1',  # 或者新增其他想要的資料夾
+]
+
+# 驗證集資料夾（用於訓練過程中驗證模型性能）
+VAL_FOLDERS = [
+    '2025_08_07/3',  # 範例驗證資料夾
+    # '2025_08_13/1',  # 您可以新增更多驗證資料夾
+]
+
+# 測試集資料夾（用於最終測試模型性能）
+TEST_FOLDERS = [
+    '2025_08_14/1',  # 範例測試資料夾
+    # '2025_08_13/2',  # 您可以新增更多測試資料夾
+]
+
+# 自動分割模式（當MANUAL_FOLDER_ASSIGNMENT=False時使用）
+AUTO_DATA_DIRS = [
     '2025_08_07/2', 
     '2025_08_07/3',
     '2025_08_07/4',
@@ -33,9 +57,8 @@ DATA_DIRS = [
 
 # 單一資料夾模式（向後兼容）
 SINGLE_DATA_DIR = '2025_08_20/1'
-USE_MULTI_FOLDERS = True  # 設為True使用多資料夾，False使用單一資料夾
 
-# 資料分割比例
+# 自動分割比例（僅在MANUAL_FOLDER_ASSIGNMENT=False時使用）
 TRAIN_RATIO = 0.7
 VAL_RATIO = 0.2
 TEST_RATIO = 0.1
@@ -79,7 +102,110 @@ CROP_TOP_PIXELS = 260
 ORIGINAL_HEIGHT = 480
 ORIGINAL_WIDTH = 640
 
-# --- 多資料夾資料載入函數 ---
+def load_multi_folder_data_manual(train_folders, val_folders, test_folders):
+    """
+    手動指定資料夾載入資料
+    
+    Args:
+        train_folders: 訓練集資料夾清單
+        val_folders: 驗證集資料夾清單  
+        test_folders: 測試集資料夾清單
+    
+    Returns:
+        dict: 包含train, val, test的字典
+    """
+    print("🔄 手動載入資料夾模式...")
+    print(f"  📁 訓練集資料夾: {train_folders}")
+    print(f"  📁 驗證集資料夾: {val_folders}")
+    print(f"  📁 測試集資料夾: {test_folders}")
+    
+    # 設定基礎路徑（向上一層目錄）
+    base_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    print(f"🗂️ 基礎路徑: {base_path}")
+    
+    def load_folders(folders, set_name):
+        all_data = []
+        for data_dir in folders:
+            # 構建完整路徑
+            full_data_dir = os.path.join(base_path, data_dir)
+            log_path = os.path.join(full_data_dir, 'log.csv')
+            img_dir = os.path.join(full_data_dir, 'recorded_images')
+            
+            print(f"🔍 檢查 {set_name}集資料夾: {full_data_dir}")
+            
+            if not os.path.exists(log_path):
+                print(f"⚠️ 跳過 {data_dir}: log.csv 不存在 (完整路徑: {log_path})")
+                continue
+                
+            if not os.path.exists(img_dir):
+                print(f"⚠️ 跳過 {data_dir}: recorded_images 資料夾不存在 (完整路徑: {img_dir})")
+                continue
+            
+            try:
+                df = pd.read_csv(log_path)
+                
+                # 檢查必要欄位
+                required_cols = ['lwheel', 'rwheel']
+                image_col = None
+                
+                for possible_name in ['img_path', 'image_path', 'image_name']:
+                    if possible_name in df.columns:
+                        image_col = possible_name
+                        break
+                
+                if image_col is None:
+                    print(f"⚠️ 跳過 {data_dir}: 找不到圖片路徑欄位")
+                    continue
+                    
+                if not all(col in df.columns for col in required_cols):
+                    missing_cols = [col for col in required_cols if col not in df.columns]
+                    print(f"⚠️ 跳過 {data_dir}: CSV缺少必要欄位 {missing_cols}")
+                    continue
+                
+                # 標準化欄位名稱
+                df = df.rename(columns={image_col: 'image_path'})
+                
+                # 添加資料夾資訊
+                df['data_dir'] = data_dir
+                df['full_image_path'] = df['image_path'].apply(lambda x: os.path.join(img_dir, os.path.basename(x)))
+                
+                # 檢查圖片檔案是否存在
+                existing_images = df['full_image_path'].apply(os.path.exists)
+                valid_df = df[existing_images].copy()
+                
+                if len(valid_df) == 0:
+                    print(f"⚠️ 跳過 {data_dir}: 沒有有效的圖片檔案")
+                    continue
+                
+                # 保持時間順序
+                valid_df = valid_df.reset_index(drop=True)
+                valid_df['folder_index'] = range(len(valid_df))
+                
+                all_data.append(valid_df)
+                print(f"✅ {set_name}集 {data_dir}: 載入 {len(valid_df)} 筆資料")
+                
+            except Exception as e:
+                print(f"❌ 載入 {data_dir} 時發生錯誤: {e}")
+                continue
+        
+        return pd.concat(all_data, ignore_index=True) if all_data else pd.DataFrame()
+    
+    # 載入各個集合的資料
+    train_data = load_folders(train_folders, "訓練")
+    val_data = load_folders(val_folders, "驗證")
+    test_data = load_folders(test_folders, "測試")
+    
+    total_data = len(train_data) + len(val_data) + len(test_data)
+    print(f"📊 總共載入 {total_data} 筆資料")
+    print(f"📋 資料分割 (手動指定): 訓練={len(train_data)} | 驗證={len(val_data)} | 測試={len(test_data)}")
+    
+    return {
+        'train': train_data,
+        'val': val_data,
+        'test': test_data
+    }
+
+# 原本的自動分割函數（保留向後兼容）
 def load_multi_folder_data(data_dirs, train_ratio=0.7, val_ratio=0.2, test_ratio=0.1):
     """
     從多個資料夾載入並合併資料 - 修正版本，保持序列連續性
@@ -611,25 +737,44 @@ if __name__ == '__main__':
     writer = SummaryWriter()
     
     # 根據設定選擇資料載入方式
-    if USE_MULTI_FOLDERS:
-        print("🔄 使用多資料夾載入模式...")
+    if MANUAL_FOLDER_ASSIGNMENT:
+        print("🔄 使用手動指定資料夾模式...")
         try:
-            data_dict = load_multi_folder_data(DATA_DIRS, TRAIN_RATIO, VAL_RATIO, TEST_RATIO)
+            data_dict = load_multi_folder_data_manual(TRAIN_FOLDERS, VAL_FOLDERS, TEST_FOLDERS)
             train_data = data_dict['train']
             val_data = data_dict['val']
             test_data = data_dict['test']
             
-            # 🔥 驗證序列完整性
+            # 驗證序列完整性
             integrity_report = validate_sequence_integrity(data_dict, SEQUENCE_LENGTH)
             
         except Exception as e:
-            print(f"❌ 多資料夾載入失敗: {e}")
-            print("🔄 嘗試使用單一資料夾模式...")
-            USE_MULTI_FOLDERS = False
-    
-    if not USE_MULTI_FOLDERS:
-        print("🔄 使用單一資料夾載入模式...")
+            print(f"❌ 手動載入資料失敗: {e}")
+            print("改為使用單一資料夾模式...")
+            data_paths = create_single_folder_data(SINGLE_DATA_DIR)
+            train_data = pd.read_csv(data_paths['train_csv'])
+            val_data = pd.read_csv(data_paths['val_csv'])
+            test_data = pd.read_csv(data_paths['test_csv'])
+            
+            train_data['img_dir'] = data_paths['img_dir']
+            val_data['img_dir'] = data_paths['img_dir']
+            test_data['img_dir'] = data_paths['img_dir']
+            
+    else:
+        print("🔄 使用自動分割多資料夾模式...")
         try:
+            data_dict = load_multi_folder_data(AUTO_DATA_DIRS, TRAIN_RATIO, VAL_RATIO, TEST_RATIO)
+            train_data = data_dict['train']
+            val_data = data_dict['val']
+            test_data = data_dict['test']
+            
+            # 驗證序列完整性
+            integrity_report = validate_sequence_integrity(data_dict, SEQUENCE_LENGTH)
+            
+        except Exception as e:
+            print(f"❌ 自動分割載入失敗: {e}")
+            print("🔄 嘗試使用單一資料夾模式...")
+            # 使用單一資料夾模式作為備案
             single_data = create_single_folder_data(SINGLE_DATA_DIR)
             if 'train_csv' in single_data:
                 # 傳統CSV模式
@@ -637,6 +782,15 @@ if __name__ == '__main__':
                 val_csv_path = single_data['val_csv']
                 test_csv_path = single_data['test_csv']
                 img_dir = single_data['img_dir']
+                
+                train_data = pd.read_csv(train_csv_path)
+                val_data = pd.read_csv(val_csv_path)
+                test_data = pd.read_csv(test_csv_path)
+                
+                train_data['img_dir'] = img_dir
+                val_data['img_dir'] = img_dir
+                test_data['img_dir'] = img_dir
+                
                 use_dataframe_mode = False
             else:
                 # DataFrame模式
@@ -644,11 +798,9 @@ if __name__ == '__main__':
                 val_data = single_data['val']
                 test_data = single_data['test']
                 use_dataframe_mode = True
-        except Exception as e:
-            print(f"❌ 資料載入失敗: {e}")
-            exit(1)
-    else:
-        use_dataframe_mode = True
+    
+    # 設定使用DataFrame模式
+    use_dataframe_mode = True
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"將使用設備: {device}")
@@ -699,15 +851,18 @@ if __name__ == '__main__':
 
     print(f"資料載入完成 -> 訓練集: {len(train_dataset)} | 驗證集: {len(val_dataset)} | 測試集: {len(test_dataset)}")
     
-    if USE_MULTI_FOLDERS:
-        print("📊 多資料夾載入統計:")
-        for data_dir in DATA_DIRS:
+    if MANUAL_FOLDER_ASSIGNMENT:
+        print("📊 手動指定資料夾統計:")
+        print(f"  📁 訓練集資料夾: {TRAIN_FOLDERS}")
+        print(f"  📁 驗證集資料夾: {VAL_FOLDERS}")
+        print(f"  📁 測試集資料夾: {TEST_FOLDERS}")
+    else:
+        print("📊 自動分割多資料夾統計:")
+        for data_dir in AUTO_DATA_DIRS:
             if os.path.exists(data_dir):
                 print(f"  ✅ {data_dir}")
             else:
                 print(f"  ❌ {data_dir} (不存在)")
-    else:
-        print(f"📁 單一資料夾: {SINGLE_DATA_DIR}")
         
     if torch.cuda.is_available():
         print(f"GPU顯存總量: {torch.cuda.get_device_properties(device).total_memory/1024/1024:.1f} MB")
