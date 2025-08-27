@@ -72,11 +72,11 @@ TEST_FOLDERS = [
 	
 ]
 開始訓練: 執行訓練腳本。  
-`python transformer_model_beta7.py`  
+`python transformer_model_beta.py`  
 腳本會開始訓練模型，並在主控台輸出每個週期的損失 (Loss) 和平均絕對誤差 (MAE)。訓練完成後，表現最佳的模型將被儲存為 .pth 檔案 (例如 beta7_at_0827.pth)。
 
 #### 階段三：自動駕駛  
-配置模型路徑: 打開 `auto_drive_for_beta6.py` 腳本。  
+配置模型路徑: 打開 `auto_drive_for_beta.py` 腳本。  
 
 找到 MODEL_PATH 變數，並將其值修改為您在階段二訓練好的模型檔案名稱。  
 
