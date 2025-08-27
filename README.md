@@ -11,12 +11,12 @@ Transformer Encoder: 分析影像特徵的時間序列，捕捉動態變化，�
 ### 檔案結構  
 `手動新賽道1.py`:  
 用途: 資料收集腳本。  
-功能: 啟動 PyBullet 環境，讓使用者手動控制車輛。按下 'r' 鍵可開始/停止記錄影像與駕駛數據。
-`transformer_model_beta.py`:
-用途: 模型訓練腳本。
-功能: 讀取收集到的資料，設定資料增強、模型參數，並進行 Vision Transformer 模型的訓練、驗證與測試。訓練完成後會儲存最佳模型 (.pth 檔案)。
-`auto_drive_for_beta.py`:
-用途: 自動駕駛模擬腳本。
+功能: 啟動 PyBullet 環境，讓使用者手動控制車輛。按下 'r' 鍵可開始/停止記錄影像與駕駛數據。  
+`transformer_model_beta.py`:  
+用途: 模型訓練腳本。  
+功能: 讀取收集到的資料，設定資料增強、模型參數，並進行 Vision Transformer 模型的訓練、驗證與測試。訓練完成後會儲存最佳模型 (.pth 檔案)。  
+`auto_drive_for_beta.py`:  
+用途: 自動駕駛模擬腳本。  
 功能: 載入訓練好的模型權重，啟動 PyBullet 環境。按下 'a' 鍵可切換至 AI 自動駕駛模式，模型會根據即時影像預測並控制車輛。  
 ### 環境設置與安裝指南  
 #### 步驟 1: 安裝 CUDA Toolkit  
@@ -43,8 +43,6 @@ PyTorch 的版本必須與您安裝的 CUDA Toolkit 版本相匹配。請前往 
 找到 TRAIN_FOLDERS, VAL_FOLDERS, TEST_FOLDERS 這三個列表。  
 將您在階段一收集到的資料夾路徑，依照需求分別填入這三個列表中。  
 
-### Python
-
 範例:  
 TRAIN_FOLDERS = [
 
@@ -70,22 +68,18 @@ TEST_FOLDERS = [
 	
     # ... 其他測試資料夾
 	
-]
+]  
 開始訓練: 執行訓練腳本。  
 `python transformer_model_beta.py`  
-腳本會開始訓練模型，並在主控台輸出每個週期的損失 (Loss) 和平均絕對誤差 (MAE)。訓練完成後，表現最佳的模型將被儲存為 .pth 檔案 (例如 beta7_at_0827.pth)。
+腳本會開始訓練模型，並在主控台輸出每個週期的損失 (Loss) 和平均絕對誤差 (MAE)。訓練完成後，表現最佳的模型將被儲存為 .pth 檔案  
+(例如 beta7_at_0827.pth)。  
 
 #### 階段三：自動駕駛  
 配置模型路徑: 打開 `auto_drive_for_beta.py` 腳本。  
-
 找到 MODEL_PATH 變數，並將其值修改為您在階段二訓練好的模型檔案名稱。  
-
-Python
-
 範例:  
 MODEL_PATH = 'beta7_at_0827.pth'  
 啟動自動駕駛: 執行模擬腳本。  
 python auto_drive_for_beta.py  
-在 PyBullet 視窗中，按下 'a' 鍵來啟動或關閉 AI 自動駕駛模式。
-
-觀察 AI 的駕駛表現。您隨時可以按下 'a' 鍵切回手動模式，並使用方向鍵接管車輛。
+在 PyBullet 視窗中，按下 'a' 鍵來啟動或關閉 AI 自動駕駛模式。  
+觀察 AI 的駕駛表現。您隨時可以按下 'a' 鍵切回手動模式，並使用方向鍵接管車輛。  
