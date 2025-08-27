@@ -85,7 +85,7 @@ Python
 範例:  
 MODEL_PATH = 'beta7_at_0827.pth'  
 啟動自動駕駛: 執行模擬腳本。  
-python auto_drive_for_beta6.py  
+python auto_drive_for_beta.py  
 在 PyBullet 視窗中，按下 'a' 鍵來啟動或關閉 AI 自動駕駛模式。
 
 觀察 AI 的駕駛表現。您隨時可以按下 'a' 鍵切回手動模式，並使用方向鍵接管車輛。
