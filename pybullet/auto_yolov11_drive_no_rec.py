@@ -28,17 +28,14 @@ import torchvision.transforms.functional as TF
 from ultralytics import YOLO
 from PIL import Image
 from collections import deque # 用於高效地處理影像序列
-from trainingmodel.transformer_model_beta5 import PositionalEncoding, VisionTransformerDriver # 確保這個路徑正確
+from trainingmodel.transformer_model_beta6 import VisionTransformerDriver, D_MODEL, N_HEAD, N_LAYERS, DROPOUT # 確保這個路徑正確6
 
 # --- 1. AI 模型參數 (必須與訓練時完全一致) ---
 MODEL_PATH = 'best_transformer_driver_model_3.pth' # 指定訓練好的模型檔案
 SEQUENCE_LENGTH = 15
 IMG_HEIGHT = 224
 IMG_WIDTH = 224
-D_MODEL = 512  # ResNet-18 的輸出維度
-N_HEAD = 8
-N_LAYERS = 3
-DROPOUT = 0.3
+
 # 圖片裁切參數 (裁掉圖片頂部包含文字的部分)
 CROP_TOP_PIXELS = 280
 ORIGINAL_HEIGHT = 480
