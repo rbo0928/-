@@ -19,83 +19,100 @@ import torchvision.transforms.functional as TF
 
 # --- 手動指定資料夾設定 ---
 # 手動指定各個集合的資料夾路徑
-MANUAL_FOLDER_ASSIGNMENT = True  # 設為True使用手動指定，False使用自動分割
 
 # 訓練集資料夾（您可以在這裡指定想要用於訓練的資料夾）
+DIRS = [
+    # '2025_08_07/2',
+    # '2025_08_07/3',
+    # '2025_08_07/4',
+    # '2025_08_14/1',
+    # '2025_08_14/2',
+    # '2025_08_14/3',
+    # '2025_08_20/1',
+    # 'new_data/混雜資料/2025_07_10/1',
+    # 'new_data/混雜資料/2025_07_14/2',
+    # 'new_data/混雜資料/2025_07_14/3',
+    # 'new_data/混雜資料/2025_07_14/7',
+    # 'new_data/混雜資料/2025_07_17/1',
+    # 'new_data/混雜資料/2025_07_17/2',
+    # 'new_data/混雜資料/2025_07_17/3',
+    # 'new_data/混雜資料/2025_07_24/1',
+    # 'new_data/混雜資料/2025_07_24/2',
+    # 'new_data/混雜資料/2025_07_24/3',
+    # 'new_data/混雜資料/2025_07_30/1',
+    # 'new_data/混雜資料/2025_07_30/2',
+    # 'new_data/混雜資料/2025_07_30/3',
+    # 'new_data/RBO/2025_07_30/1',
+    # 'new_data/RBO/2025_07_30/2',
+    # 'new_data/RBO/2025_07_30/3',
+    # 'new_data/RBO/2025_08_01/1',
+    # 'new_data/RBO/2025_08_01/2',
+    # 'new_data/RBO/2025_08_01/3',
+    # 'new_data/RBO/2025_08_21/1',
+    # 'new_data/RBO/2025_08_21/2',
+    # 'new_data/RBO/2025_08_21/3'
+]
+
 TRAIN_FOLDERS = [
-    '2025_08_07/2',  # 範例資料夾
-    '2025_08_14/2',  # 範例資料夾 
-    '2025_08_14/3',  # 範例資料夾
-    # '2025_08_07/4',  # 您可以取消註解來加入更多資料夾
-    # '2025_08_12/1',  # 或者新增其他想要的資料夾
+    '2025_08_07/2',  
+    '2025_08_14/2',  
+    '2025_08_14/3', 
+    '2025_08_20/1',
+    'new_data/混雜資料/2025_07_10/1',
+    'new_data/混雜資料/2025_07_14/2',
+    'new_data/混雜資料/2025_07_14/3',
+    'new_data/混雜資料/2025_07_14/7',
+    'new_data/混雜資料/2025_07_17/1',
+    'new_data/混雜資料/2025_07_17/2',
+    'new_data/RBO/2025_07_30/1',
+    'new_data/RBO/2025_07_30/2',
+    'new_data/RBO/2025_07_30/3',
+    'new_data/RBO/2025_08_01/1',
+    'new_data/RBO/2025_08_01/2',
+    'new_data/混雜資料/2025_07_24/2',
+    'new_data/混雜資料/2025_07_24/3',
+    'new_data/混雜資料/2025_07_30/1',
+    'new_data/混雜資料/2025_07_30/2',
 ]
 
 # 驗證集資料夾（用於訓練過程中驗證模型性能）
 VAL_FOLDERS = [
-    '2025_08_07/3',  # 範例驗證資料夾
-    # '2025_08_13/1',  # 您可以新增更多驗證資料夾
+    '2025_08_07/3',  
+    '2025_08_07/4',
+    'new_data/RBO/2025_08_01/3',
+    'new_data/RBO/2025_08_21/1',
+    'new_data/RBO/2025_08_21/2',
+    'new_data/混雜資料/2025_07_24/1',
 ]
 
 # 測試集資料夾（用於最終測試模型性能）
 TEST_FOLDERS = [
-    '2025_08_14/1',  # 範例測試資料夾
-    # '2025_08_13/2',  # 您可以新增更多測試資料夾
-]
-
-# 自動分割模式（當MANUAL_FOLDER_ASSIGNMENT=False時使用）
-AUTO_DATA_DIRS = [
-    '2025_08_07/2', 
-    '2025_08_07/3',
-    '2025_08_07/4',
-    '2025_08_12/1',
-    '2025_08_13/1',
-    '2025_08_13/2',
     '2025_08_14/1',
-    '2025_08_14/2',
-    '2025_08_14/3'
+    'new_data/RBO/2025_08_21/3',
+    'new_data/混雜資料/2025_07_30/3',
+    'new_data/混雜資料/2025_07_17/3',
 ]
 
-# 單一資料夾模式（向後兼容）
-SINGLE_DATA_DIR = '2025_08_20/1'
-
-# 自動分割比例（僅在MANUAL_FOLDER_ASSIGNMENT=False時使用）
-TRAIN_RATIO = 0.7
-VAL_RATIO = 0.2
-TEST_RATIO = 0.1
-
-BEST_MODEL_SAVE_PATH = 'best_transformer_driver_model.pth'
+BEST_MODEL_SAVE_PATH = 'best_transformer_driver_model_4.pth'
 
 # 預覽開關
-SHOW_PREVIEW = False
+SHOW_PREVIEW = True
 # 重複訓練開關
-RETRAIN = False
+RETRAIN = True
 
 # 優化後的模型與訓練參數
-SEQUENCE_LENGTH = 15  # 減少序列長度以節省記憶體
-BATCH_SIZE = 6        # 針對8G顯卡優化
+SEQUENCE_LENGTH = 5  # 減少序列長度以節省記憶體
+BATCH_SIZE = 16      # 針對8G顯卡優化
 EPOCHS = 80
-LEARNING_RATE = 3e-4  # 提高初始學習率
+LEARNING_RATE = 1e-4  # 提高初始學習率
 IMG_HEIGHT = 224      # 降低解析度以節省記憶體
 IMG_WIDTH = 224
-
-# # Transformer 模型參數
-# D_MODEL = 512
-# N_HEAD = 8
-# N_LAYERS = 3
-# DROPOUT = 0.3
-
-# # Transformer 模型參數2
-# D_MODEL = 768
-# N_HEAD = 12
-# N_LAYERS = 6
-# DROPOUT = 0.3
 
 # Transformer 模型參數3
 D_MODEL = 512
 N_HEAD = 8
 N_LAYERS = 4
 DROPOUT = 0.3
-
 
 # 圖片裁切參數
 CROP_TOP_PIXELS = 260
@@ -553,7 +570,8 @@ class DrivingDataset(Dataset):
                     img_path = img_name
 
             try:
-                image = Image.open(img_path).convert('RGB')
+                # 讀取灰階影像（L），後續在 transform 中轉為3通道以相容預訓練模型
+                image = Image.open(img_path).convert('L')
 
                 if apply_straight_aug:
                     image = image.transform(image.size, Image.AFFINE, (1, 0, -shift_px, 0, 1, 0))
@@ -737,78 +755,41 @@ if __name__ == '__main__':
     writer = SummaryWriter()
     
     # 根據設定選擇資料載入方式
-    if MANUAL_FOLDER_ASSIGNMENT:
-        print("🔄 使用手動指定資料夾模式...")
-        try:
-            data_dict = load_multi_folder_data_manual(TRAIN_FOLDERS, VAL_FOLDERS, TEST_FOLDERS)
-            train_data = data_dict['train']
-            val_data = data_dict['val']
-            test_data = data_dict['test']
+    print("🔄 使用手動指定資料夾模式...")
+    try:
+        data_dict = load_multi_folder_data_manual(TRAIN_FOLDERS, VAL_FOLDERS, TEST_FOLDERS)
+        train_data = data_dict['train']
+        val_data = data_dict['val']
+        test_data = data_dict['test']
+        
+        # 驗證序列完整性
+        integrity_report = validate_sequence_integrity(data_dict, SEQUENCE_LENGTH)
+        
+    except Exception as e:
+        print(f"❌ 手動載入資料失敗: {e}")
+        # print("改為使用單一資料夾模式...")
+        # data_paths = create_single_folder_data(SINGLE_DATA_DIR)
+        # train_data = pd.read_csv(data_paths['train_csv'])
+        # val_data = pd.read_csv(data_paths['val_csv'])
+        # test_data = pd.read_csv(data_paths['test_csv'])
+        
+        # train_data['img_dir'] = data_paths['img_dir']
+        # val_data['img_dir'] = data_paths['img_dir']
+        # test_data['img_dir'] = data_paths['img_dir']
             
-            # 驗證序列完整性
-            integrity_report = validate_sequence_integrity(data_dict, SEQUENCE_LENGTH)
-            
-        except Exception as e:
-            print(f"❌ 手動載入資料失敗: {e}")
-            print("改為使用單一資料夾模式...")
-            data_paths = create_single_folder_data(SINGLE_DATA_DIR)
-            train_data = pd.read_csv(data_paths['train_csv'])
-            val_data = pd.read_csv(data_paths['val_csv'])
-            test_data = pd.read_csv(data_paths['test_csv'])
-            
-            train_data['img_dir'] = data_paths['img_dir']
-            val_data['img_dir'] = data_paths['img_dir']
-            test_data['img_dir'] = data_paths['img_dir']
-            
-    else:
-        print("🔄 使用自動分割多資料夾模式...")
-        try:
-            data_dict = load_multi_folder_data(AUTO_DATA_DIRS, TRAIN_RATIO, VAL_RATIO, TEST_RATIO)
-            train_data = data_dict['train']
-            val_data = data_dict['val']
-            test_data = data_dict['test']
-            
-            # 驗證序列完整性
-            integrity_report = validate_sequence_integrity(data_dict, SEQUENCE_LENGTH)
-            
-        except Exception as e:
-            print(f"❌ 自動分割載入失敗: {e}")
-            print("🔄 嘗試使用單一資料夾模式...")
-            # 使用單一資料夾模式作為備案
-            single_data = create_single_folder_data(SINGLE_DATA_DIR)
-            if 'train_csv' in single_data:
-                # 傳統CSV模式
-                train_csv_path = single_data['train_csv']
-                val_csv_path = single_data['val_csv']
-                test_csv_path = single_data['test_csv']
-                img_dir = single_data['img_dir']
-                
-                train_data = pd.read_csv(train_csv_path)
-                val_data = pd.read_csv(val_csv_path)
-                test_data = pd.read_csv(test_csv_path)
-                
-                train_data['img_dir'] = img_dir
-                val_data['img_dir'] = img_dir
-                test_data['img_dir'] = img_dir
-                
-                use_dataframe_mode = False
-            else:
-                # DataFrame模式
-                train_data = single_data['train']
-                val_data = single_data['val']
-                test_data = single_data['test']
-                use_dataframe_mode = True
-    
+   
     # 設定使用DataFrame模式
-    use_dataframe_mode = True
-
+    
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"將使用設備: {device}")
 
     # 優化的資料轉換
     train_transform = transforms.Compose([
         CustomTopCrop(CROP_TOP_PIXELS),
-        transforms.ColorJitter(brightness=0.3, contrast=0.3, saturation=0.2, hue=0.1),
+        # 轉為3通道灰階(RGB格式，但三通道內容相同)，以相容 EfficientNet 的輸入
+        transforms.Grayscale(num_output_channels=3),
+        # 僅保留亮度/對比增強，避免飽和度/色相引入彩色成分
+        transforms.ColorJitter(brightness=0.3, contrast=0.3),
         transforms.RandomAffine(degrees=5, translate=(0.05, 0)),
         transforms.Resize((IMG_HEIGHT, IMG_WIDTH)),
         transforms.ToTensor(),
@@ -817,29 +798,20 @@ if __name__ == '__main__':
 
     val_test_transform = transforms.Compose([
         CustomTopCrop(CROP_TOP_PIXELS),
+        transforms.Grayscale(num_output_channels=3),
         transforms.Resize((IMG_HEIGHT, IMG_WIDTH)),
         transforms.ToTensor(),
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
     ])
 
     # 建立資料集
-    if use_dataframe_mode:
-        # 使用DataFrame模式（新的多資料夾系統）
-        train_dataset = DrivingDataset(train_data, SEQUENCE_LENGTH, 
-                                     transform=train_transform, is_training=True)
-        val_dataset = DrivingDataset(val_data, SEQUENCE_LENGTH, 
-                                   transform=val_test_transform, is_training=False)
-        test_dataset = DrivingDataset(test_data, SEQUENCE_LENGTH, 
-                                    transform=val_test_transform, is_training=False)
-    else:
-        # 使用傳統CSV模式（向後兼容）
-        train_dataset = DrivingDataset(train_csv_path, SEQUENCE_LENGTH, 
-                                     transform=train_transform, is_training=True)
-        val_dataset = DrivingDataset(val_csv_path, SEQUENCE_LENGTH, 
-                                   transform=val_test_transform, is_training=False)
-        test_dataset = DrivingDataset(test_csv_path, SEQUENCE_LENGTH, 
-                                    transform=val_test_transform, is_training=False)
-
+    # 使用DataFrame模式（新的多資料夾系統）
+    train_dataset = DrivingDataset(train_data, SEQUENCE_LENGTH, 
+                                    transform=train_transform, is_training=True)
+    val_dataset = DrivingDataset(val_data, SEQUENCE_LENGTH, 
+                                transform=val_test_transform, is_training=False)
+    test_dataset = DrivingDataset(test_data, SEQUENCE_LENGTH, 
+                                transform=val_test_transform, is_training=False)
     # 優化的資料載入器
     num_workers = 4  # 針對8G顯卡減少工作程序
     train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, 
@@ -851,18 +823,10 @@ if __name__ == '__main__':
 
     print(f"資料載入完成 -> 訓練集: {len(train_dataset)} | 驗證集: {len(val_dataset)} | 測試集: {len(test_dataset)}")
     
-    if MANUAL_FOLDER_ASSIGNMENT:
-        print("📊 手動指定資料夾統計:")
-        print(f"  📁 訓練集資料夾: {TRAIN_FOLDERS}")
-        print(f"  📁 驗證集資料夾: {VAL_FOLDERS}")
-        print(f"  📁 測試集資料夾: {TEST_FOLDERS}")
-    else:
-        print("📊 自動分割多資料夾統計:")
-        for data_dir in AUTO_DATA_DIRS:
-            if os.path.exists(data_dir):
-                print(f"  ✅ {data_dir}")
-            else:
-                print(f"  ❌ {data_dir} (不存在)")
+    print("📊 手動指定資料夾統計:")
+    print(f"  📁 訓練集資料夾: {TRAIN_FOLDERS}")
+    print(f"  📁 驗證集資料夾: {VAL_FOLDERS}")
+    print(f"  📁 測試集資料夾: {TEST_FOLDERS}")
         
     if torch.cuda.is_available():
         print(f"GPU顯存總量: {torch.cuda.get_device_properties(device).total_memory/1024/1024:.1f} MB")
