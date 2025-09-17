@@ -20,42 +20,44 @@ import torchvision.transforms.functional as TF
 # 手動指定各個集合的資料夾路徑
 MANUAL_FOLDER_ASSIGNMENT = True  # 設為True使用手動指定，False使用自動分割
 
-# 訓練集資料夾（您可以在這裡指定想要用於訓練的資料夾）
 TRAIN_FOLDERS = [
-    '2025_08_14/2',
+    '2025_08_07/2',  
+    '2025_08_14/2',  
     '2025_08_14/3', 
     '2025_08_20/1',
-    '混雜資料/2025_07_10/1',
-    '混雜資料/2025_07_14/2',
-    '混雜資料/2025_07_14/3',
-    '混雜資料/2025_07_14/7',
-    '混雜資料/2025_07_17/1',
-    '混雜資料/2025_07_17/2',
-    '2025_07_30/1',
-    '2025_07_30/2',
-    '2025_07_30/3',
-    '2025_08_01/1',
-    '2025_08_01/2',
-    '混雜資料/2025_07_24/2',
-    '混雜資料/2025_07_24/3',
-    '混雜資料/2025_07_30/1',
-    '混雜資料/2025_07_30/2',
+    'new_data/混雜資料/2025_07_10/1',
+    'new_data/混雜資料/2025_07_14/2',
+    'new_data/混雜資料/2025_07_14/3',
+    'new_data/混雜資料/2025_07_14/7',
+    'new_data/混雜資料/2025_07_17/1',
+    'new_data/混雜資料/2025_07_17/2',
+    'new_data/RBO/2025_07_30/1',
+    'new_data/RBO/2025_07_30/2',
+    'new_data/RBO/2025_07_30/3',
+    'new_data/RBO/2025_08_01/1',
+    'new_data/RBO/2025_08_01/2',
+    'new_data/混雜資料/2025_07_24/2',
+    'new_data/混雜資料/2025_07_24/3',
+    'new_data/混雜資料/2025_07_30/1',
+    'new_data/混雜資料/2025_07_30/2',
 ]
 
 # 驗證集資料夾（用於訓練過程中驗證模型性能）
 VAL_FOLDERS = [
-    '2025_08_01/3',
-    '2025_08_21/1',
-    '2025_08_21/2',
-    '混雜資料/2025_07_24/1'
+    '2025_08_07/3',  
+    '2025_08_07/4',
+    'new_data/RBO/2025_08_01/3',
+    'new_data/RBO/2025_08_21/1',
+    'new_data/RBO/2025_08_21/2',
+    'new_data/混雜資料/2025_07_24/1',
 ]
 
 # 測試集資料夾（用於最終測試模型性能）
 TEST_FOLDERS = [
     '2025_08_14/1',
-    '2025_08_21/3',
-    '混雜資料/2025_07_30/3',
-    '混雜資料/2025_07_17/3',
+    'new_data/RBO/2025_08_21/3',
+    'new_data/混雜資料/2025_07_30/3',
+    'new_data/混雜資料/2025_07_17/3',
 ]
 
 # 單一資料夾模式（向後兼容）
@@ -66,18 +68,18 @@ TRAIN_RATIO = 0.7
 VAL_RATIO = 0.2
 TEST_RATIO = 0.1
 
-BEST_MODEL_SAVE_PATH = 'beta2_at_0829.pth'
+BEST_MODEL_SAVE_PATH = 'beta2_at_0903.pth'
 
 # 預覽開關
 SHOW_PREVIEW = False
 # 重複訓練開關
-RETRAIN = True
+RETRAIN = False
 
 # 優化後的模型與訓練參數
-SEQUENCE_LENGTH = 9  # 減少序列長度以節省記憶體
+SEQUENCE_LENGTH = 12    # 減少序列長度以節省記憶體
 BATCH_SIZE = 12        # 針對8G顯卡優化
 EPOCHS = 80
-LEARNING_RATE = 1e-4  # 提高初始學習率
+LEARNING_RATE = 5e-4  # 提高初始學習率
 IMG_HEIGHT = 224      # 降低解析度以節省記憶體
 IMG_WIDTH = 224
 
@@ -87,20 +89,20 @@ IMG_WIDTH = 224
 # N_LAYERS = 3
 # DROPOUT = 0.3
 
-# # Transformer 模型參數2
-# D_MODEL = 768
-# N_HEAD = 12
-# N_LAYERS = 6
-# DROPOUT = 0.3
+D_MODEL = 512  # ResNet-18 的輸出維度 #MUST MATCH TRAINING SCRIPT
+N_HEAD = 16 #MUST MATCH TRAINING SCRIPT
+N_LAYERS = 6 #MUST MATCH TRAINING SCRIPT
+DROPOUT = 0.3 #MUST MATCH TRAINING SCRIPT
 
-# Transformer 模型參數3
-D_MODEL = 512
-N_HEAD = 8
-N_LAYERS = 3
-DROPOUT = 0.4
+
+# # Transformer 模型參數3
+# D_MODEL = 512
+# N_HEAD = 8
+# N_LAYERS = 3
+# DROPOUT = 0.4
 
 # 圖片裁切參數
-CROP_TOP_PIXELS = 280
+CROP_TOP_PIXELS = 260
 ORIGINAL_HEIGHT = 480
 ORIGINAL_WIDTH = 640
 
@@ -529,10 +531,10 @@ class DrivingDataset(Dataset):
                 else:
                     print(f"⚠️ 無法獲取圖片 index={i}，使用黑色圖片")
                     if self.transform:
-                        black_image = Image.new('RGB', (ORIGINAL_WIDTH, ORIGINAL_HEIGHT), (0, 0, 0))
+                        black_image = Image.new('L', (ORIGINAL_WIDTH, ORIGINAL_HEIGHT), 0)
                         image = self.transform(black_image)
                     else:
-                        image = torch.zeros(3, IMG_HEIGHT, IMG_WIDTH)
+                        image = torch.zeros(1, IMG_HEIGHT, IMG_WIDTH)
                     sequence_images.append(image)
                     continue
 
@@ -555,7 +557,8 @@ class DrivingDataset(Dataset):
                     img_path = img_name
 
             try:
-                image = Image.open(img_path).convert('RGB')
+                # 改為灰階讀取
+                image = Image.open(img_path).convert('L')
 
                 if apply_straight_aug:
                     image = image.transform(image.size, Image.AFFINE, (1, 0, -shift_px, 0, 1, 0))
@@ -574,10 +577,10 @@ class DrivingDataset(Dataset):
                 else:
                     # 使用黑色圖片替代
                     if self.transform:
-                        black_image = Image.new('RGB', (ORIGINAL_WIDTH, ORIGINAL_HEIGHT), (0, 0, 0))
+                        black_image = Image.new('L', (ORIGINAL_WIDTH, ORIGINAL_HEIGHT), 0)
                         image = self.transform(black_image)
                     else:
-                        image = torch.zeros(3, IMG_HEIGHT, IMG_WIDTH)
+                        image = torch.zeros(1, IMG_HEIGHT, IMG_WIDTH)
                     sequence_images.append(image)
 
         images_tensor = torch.stack(sequence_images)
@@ -603,6 +606,13 @@ class VisionTransformerDriver(nn.Module):
     def __init__(self, d_model, nhead, num_encoder_layers, dropout, num_classes=2):
         super(VisionTransformerDriver, self).__init__()
         resnet = models.resnet18(weights=models.ResNet18_Weights.DEFAULT)
+        # 將 ResNet 的第一層捲積改為 1 通道輸入，並用預訓練權重平均初始化
+        old_conv1 = resnet.conv1
+        new_conv1 = nn.Conv2d(1, 64, kernel_size=7, stride=2, padding=3, bias=False)
+        with torch.no_grad():
+            if old_conv1.weight.shape[1] == 3:
+                new_conv1.weight.copy_(old_conv1.weight.mean(dim=1, keepdim=True))
+        resnet.conv1 = new_conv1
         self.cnn = nn.Sequential(*list(resnet.children())[:-1])
         self.pos_encoder = PositionalEncoding(d_model, dropout)
         encoder_layers = nn.TransformerEncoderLayer(d_model, nhead, dropout=dropout, batch_first=True)
@@ -623,7 +633,6 @@ class VisionTransformerDriver(nn.Module):
         cls_output = transformer_output[:, 0, :]
         out = self.output_fc(cls_output)
         return out
-
 
 # --- 改進的訓練函式 ---
 def run_epoch(model, dataloader, criterion, optimizer, device, is_training, epoch_desc=""):
@@ -677,7 +686,7 @@ def run_epoch(model, dataloader, criterion, optimizer, device, is_training, epoc
 def predict(model, image_sequence, transform, device):
     model.to(device)
     model.eval()
-    processed_sequence = [transform(img.convert('RGB')) for img in image_sequence]
+    processed_sequence = [transform(img.convert('L')) for img in image_sequence]
     input_tensor = torch.stack(processed_sequence).unsqueeze(0).to(device)
     
     with torch.no_grad():
@@ -721,18 +730,20 @@ if __name__ == '__main__':
     # 優化的資料轉換
     train_transform = transforms.Compose([
         CustomTopCrop(CROP_TOP_PIXELS),
-        transforms.ColorJitter(brightness=0.3, contrast=0.3, saturation=0.2, hue=0.1),
+        transforms.Grayscale(num_output_channels=1),
+        transforms.ColorJitter(brightness=0.3, contrast=0.3),
         transforms.RandomAffine(degrees=5, translate=(0.05, 0)),
         transforms.Resize((IMG_HEIGHT, IMG_WIDTH)),
         transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+        transforms.Normalize(mean=[0.5], std=[0.5]),
     ])
 
     val_test_transform = transforms.Compose([
         CustomTopCrop(CROP_TOP_PIXELS),
+        transforms.Grayscale(num_output_channels=1),
         transforms.Resize((IMG_HEIGHT, IMG_WIDTH)),
         transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+        transforms.Normalize(mean=[0.5], std=[0.5]),
     ])
 
     # 建立資料集
@@ -875,8 +886,8 @@ if __name__ == '__main__':
         sample_sequence_tensor, true_speeds_tensor = test_dataset[0]
         sample_pil_images = []
         inv_normalize = transforms.Normalize(
-            mean=[-0.485/0.229, -0.456/0.224, -0.406/0.225], 
-            std=[1/0.229, 1/0.224, 1/0.225]
+            mean=[-0.5/0.5], 
+            std=[1/0.5]
         )
         
         for img_tensor in sample_sequence_tensor:

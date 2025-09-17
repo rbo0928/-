@@ -93,7 +93,7 @@ TEST_FOLDERS = [
     'new_data/混雜資料/2025_07_17/3',
 ]
 
-BEST_MODEL_SAVE_PATH = 'best_transformer_driver_model_4.pth'
+BEST_MODEL_SAVE_PATH = 'best_transformer_driver_model_5_gray.pth'
 
 # 預覽開關
 SHOW_PREVIEW = True
@@ -544,10 +544,10 @@ class DrivingDataset(Dataset):
                 else:
                     print(f"⚠️ 無法獲取圖片 index={i}，使用黑色圖片")
                     if self.transform:
-                        black_image = Image.new('RGB', (ORIGINAL_WIDTH, ORIGINAL_HEIGHT), (0, 0, 0))
+                        black_image = Image.new('L', (ORIGINAL_WIDTH, ORIGINAL_HEIGHT), 0)
                         image = self.transform(black_image)
                     else:
-                        image = torch.zeros(3, IMG_HEIGHT, IMG_WIDTH)
+                        image = torch.zeros(1, IMG_HEIGHT, IMG_WIDTH)
                     sequence_images.append(image)
                     continue
 
@@ -570,7 +570,7 @@ class DrivingDataset(Dataset):
                     img_path = img_name
 
             try:
-                # 讀取灰階影像（L），後續在 transform 中轉為3通道以相容預訓練模型
+                # 讀取灰階影像（L）
                 image = Image.open(img_path).convert('L')
 
                 if apply_straight_aug:
@@ -590,10 +590,10 @@ class DrivingDataset(Dataset):
                 else:
                     # 使用黑色圖片替代
                     if self.transform:
-                        black_image = Image.new('RGB', (ORIGINAL_WIDTH, ORIGINAL_HEIGHT), (0, 0, 0))
+                        black_image = Image.new('L', (ORIGINAL_WIDTH, ORIGINAL_HEIGHT), 0)
                         image = self.transform(black_image)
                     else:
-                        image = torch.zeros(3, IMG_HEIGHT, IMG_WIDTH)
+                        image = torch.zeros(1, IMG_HEIGHT, IMG_WIDTH)
                     sequence_images.append(image)
 
         images_tensor = torch.stack(sequence_images)
@@ -622,6 +622,23 @@ class VisionTransformerDriver(nn.Module):
         
         # 使用更輕量的 CNN backbone
         efficientnet = models.efficientnet_b0(weights=models.EfficientNet_B0_Weights.DEFAULT)
+        
+        # ==================== 核心修改處 ====================
+        # 取得原始的第一層卷積層，改為單通道並用 RGB 權重均值初始化
+        original_first_layer = efficientnet.features[0][0]
+        new_first_layer = nn.Conv2d(
+            in_channels=1,
+            out_channels=original_first_layer.out_channels,
+            kernel_size=original_first_layer.kernel_size,
+            stride=original_first_layer.stride,
+            padding=original_first_layer.padding,
+            bias=(original_first_layer.bias is not None)
+        )
+        with torch.no_grad():
+            new_first_layer.weight.copy_(original_first_layer.weight.mean(dim=1, keepdim=True))
+        efficientnet.features[0][0] = new_first_layer
+        # =====================================================
+
         self.cnn = nn.Sequential(
             efficientnet.features,
             nn.AdaptiveAvgPool2d((1, 1)),
@@ -743,7 +760,7 @@ def run_epoch(model, dataloader, criterion, optimizer, device, is_training, epoc
 def predict(model, image_sequence, transform, device):
     model.to(device)
     model.eval()
-    processed_sequence = [transform(img.convert('RGB')) for img in image_sequence]
+    processed_sequence = [transform(img.convert('L')) for img in image_sequence]
     input_tensor = torch.stack(processed_sequence).unsqueeze(0).to(device)
     
     with torch.no_grad():
@@ -783,25 +800,24 @@ if __name__ == '__main__':
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"將使用設備: {device}")
 
-    # 優化的資料轉換
+    # 優化的資料轉換（灰階單通道 + 灰階統計正規化）
     train_transform = transforms.Compose([
         CustomTopCrop(CROP_TOP_PIXELS),
-        # 轉為3通道灰階(RGB格式，但三通道內容相同)，以相容 EfficientNet 的輸入
-        transforms.Grayscale(num_output_channels=3),
+        transforms.Grayscale(num_output_channels=1),
         # 僅保留亮度/對比增強，避免飽和度/色相引入彩色成分
         transforms.ColorJitter(brightness=0.3, contrast=0.3),
         transforms.RandomAffine(degrees=5, translate=(0.05, 0)),
         transforms.Resize((IMG_HEIGHT, IMG_WIDTH)),
         transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+        transforms.Normalize(mean=[0.449], std=[0.226]),
     ])
 
     val_test_transform = transforms.Compose([
         CustomTopCrop(CROP_TOP_PIXELS),
-        transforms.Grayscale(num_output_channels=3),
+        transforms.Grayscale(num_output_channels=1),
         transforms.Resize((IMG_HEIGHT, IMG_WIDTH)),
         transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+    transforms.Normalize(mean=[0.449], std=[0.226]),
     ])
 
     # 建立資料集
@@ -941,8 +957,8 @@ if __name__ == '__main__':
         sample_sequence_tensor, true_speeds_tensor = test_dataset[0]
         sample_pil_images = []
         inv_normalize = transforms.Normalize(
-            mean=[-0.485/0.229, -0.456/0.224, -0.406/0.225], 
-            std=[1/0.229, 1/0.224, 1/0.225]
+            mean=[-0.449/0.226],
+            std=[1/0.226]
         )
         
         for img_tensor in sample_sequence_tensor:
