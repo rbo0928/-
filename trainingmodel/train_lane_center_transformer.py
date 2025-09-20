@@ -38,6 +38,10 @@ from torchvision.models import ResNet18_Weights
 
 from tqdm import tqdm
 
+import math
+import logging
+# logging.basicConfig(level=logging.INFO)
+
 # ----------------------------- CONFIG ------------------------------------
 # Edit these variables directly.
 # MODE: either 'multi' to use TRAIN_DIRS / VAL_DIRS, or 'single' to use CSV_PATH
@@ -85,13 +89,13 @@ SEQ_LEN = 8
 IMG_SIZE = 224
 BATCH_SIZE = 8
 EPOCHS = 30
-LR = 1e-4
-WEIGHT_DECAY = 1e-4
+LR = 1e-5
+WEIGHT_DECAY = 1e-5
 NUM_WORKERS = 4
 VAL_SPLIT = 0.0  # fraction of train to hold as val if VAL_DIRS empty
 SEED = 42
 DEVICE = 'cuda'  # or 'cpu'
-NO_AMP = False
+NO_AMP = True
 
 # Dataset columns
 TARGET_COLS = ("lwheel", "rwheel")
@@ -298,31 +302,68 @@ class LaneCenterTransformer(nn.Module):
 
 
 # ----------------------------- Training ----------------------------------
-def train_one_epoch(model, optim, criterion, loader, device, scaler=None):
+def train_one_epoch(model, optim, criterion, loader, device, scaler=None,
+                    clip_max_norm=5.0, debug_nan=True):
     model.train()
     running_loss = 0.0
     n = 0
-    for imgs_seq, sensors_seq, target in tqdm(loader, desc='train', leave=False):
+    for batch_idx, (imgs_seq, sensors_seq, target) in enumerate(tqdm(loader, desc='train', leave=False)):
         imgs_seq = imgs_seq.to(device)  # B x T x C x H x W
         sensors_seq = sensors_seq.to(device)
         target = target.to(device)
 
         optim.zero_grad()
+
+        # forward + loss (AMP aware)
         if scaler is not None:
             with torch.amp.autocast(device_type='cuda'):
                 pred = model(imgs_seq, sensors_seq)
                 loss = criterion(pred, target)
-            scaler.scale(loss).backward()
-            scaler.step(optim)
-            scaler.update()
         else:
             pred = model(imgs_seq, sensors_seq)
             loss = criterion(pred, target)
+
+        # detect nan/inf in loss
+        if not torch.isfinite(loss):
+            logging.warning(f"Non-finite loss at batch {batch_idx}: {loss.item()}. Skipping batch.")
+            # optionally continue without stepping optimizer
+            continue
+
+        # backward + gradient clipping + step
+        if scaler is not None:
+            scaler.scale(loss).backward()
+            # unscale to inspect grads and clip
+            scaler.unscale_(optim)
+            # clip grads
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=clip_max_norm)
+            # optional: compute grad norm for logging
+            total_norm = 0.0
+            for p in model.parameters():
+                if p.grad is not None:
+                    param_norm = p.grad.data.norm(2)
+                    total_norm += param_norm.item() ** 2
+            total_norm = math.sqrt(total_norm)
+            # step
+            scaler.step(optim)
+            scaler.update()
+        else:
             loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=clip_max_norm)
+            # grad norm logging
+            total_norm = 0.0
+            for p in model.parameters():
+                if p.grad is not None:
+                    param_norm = p.grad.data.norm(2)
+                    total_norm += param_norm.item() ** 2
+            total_norm = math.sqrt(total_norm)
             optim.step()
 
         running_loss += float(loss.item()) * imgs_seq.size(0)
         n += imgs_seq.size(0)
+
+        # debug prints occasionally
+        if batch_idx % 200 == 0:
+            logging.info(f"[train] batch {batch_idx} loss={loss.item():.6f} grad_norm={total_norm:.4f}")
 
     return running_loss / max(1, n)
 
@@ -403,7 +444,7 @@ def main():
     model.to(device)
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=LR, weight_decay=WEIGHT_DECAY)
-    criterion = nn.MSELoss()
+    criterion = nn.SmoothL1Loss()
 
     scaler = None
     if (not NO_AMP) and device.type == 'cuda':
