@@ -6,7 +6,7 @@
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="cone.dae" scale="1.25 1.25 1.25"/>
+        <mesh filename="cone.dae" scale="1 1 1"/>
       </geometry>
       <material name="cone">
         <color rgba="1 0.4 0 1"/> <!--橘色-->
@@ -15,7 +15,7 @@
     <collision>
       <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="cone.dae" scale="1.25 1.25 1.25"/>
+        <mesh filename="cone.dae" scale="1 1 1"/>
       </geometry>
     </collision>
     <inertial>
