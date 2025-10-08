@@ -78,7 +78,7 @@ TEST_FOLDERS = [
 配置模型路徑: 打開 `auto_drive_for_beta.py` 腳本。  
 找到 MODEL_PATH 變數，並將其值修改為您在階段二訓練好的模型檔案名稱。  
 範例:  
-MODEL_PATH = 'beta7_at_0827.pth'  
+MODEL_PATH = 'beta2_at_0827.pth'  
 啟動自動駕駛: 執行模擬腳本。  
 python auto_drive_for_beta.py  
 在 PyBullet 視窗中，按下 'a' 鍵來啟動或關閉 AI 自動駕駛模式。  
